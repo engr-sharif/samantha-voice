@@ -18,7 +18,6 @@ body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-i
 #boot-screen{z-index:20;opacity:0;pointer-events:none}
 #main-screen{z-index:10;opacity:0;pointer-events:none}
 
-/* PIN */
 .pin-dots{display:flex;gap:18px;margin-bottom:48px}
 .pin-dot{width:16px;height:16px;border-radius:50%;border:2px solid rgba(0,0,0,0.5);transition:background .15s}
 .pin-dot.filled{background:rgba(0,0,0,0.8);border-color:rgba(0,0,0,0.8)}
@@ -29,18 +28,19 @@ body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-i
 .key.del{border:none;font-size:16px;letter-spacing:1px}
 .pin-error{color:rgba(0,0,0,0.6);font-size:13px;height:20px;margin-bottom:24px;letter-spacing:1px}
 
-/* Boot */
 #boot-canvas{width:100%;height:100%}
 
-/* Main */
 #viz-canvas{position:absolute;inset:0;width:100%;height:100%}
 #status{position:absolute;bottom:calc(60px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:0.5;transition:opacity .3s}
-#transcript{position:absolute;bottom:calc(20px + env(safe-area-inset-bottom));left:20px;right:20px;text-align:center;font-size:13px;color:rgba(0,0,0,0.45);max-height:60px;overflow:hidden;line-height:1.4}
+#transcript{position:absolute;bottom:calc(20px + env(safe-area-inset-bottom));left:20px;right:20px;text-align:center;font-size:13px;color:rgba(0,0,0,0.45);max-height:80px;overflow:hidden;line-height:1.5}
+.t-user{opacity:0.5;font-style:italic}
+.t-sam{opacity:0.7}
+#conn-dot{position:absolute;top:calc(12px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));width:8px;height:8px;border-radius:50%;background:rgba(0,0,0,0.2);transition:background .3s}
+#conn-dot.connected{background:#1a1a1a}
 </style>
 </head>
 <body>
 
-<!-- PIN Screen -->
 <div id="pin-screen">
   <div class="pin-error" id="pin-error"></div>
   <div class="pin-dots" id="pin-dots">
@@ -54,12 +54,11 @@ body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-i
   </div>
 </div>
 
-<!-- Boot Screen (Three.js) -->
 <div id="boot-screen"><canvas id="boot-canvas"></canvas></div>
 
-<!-- Main Screen -->
 <div id="main-screen">
   <canvas id="viz-canvas"></canvas>
+  <div id="conn-dot"></div>
   <div id="status">tap to talk</div>
   <div id="transcript"></div>
 </div>
@@ -71,11 +70,26 @@ body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-i
 
 const PIN_CODE = '0913';
 const BG = '#FF4F38';
+
+// ── Backend config ──────────────────────────────────────────────────
+// Auto-detect: if served from the backend, use relative WS; otherwise use Tailscale
+const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.port === '8765';
+const IS_TAILSCALE = location.hostname.includes('tail');
+const WS_URL = (IS_LOCAL || IS_TAILSCALE)
+  ? `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`
+  : 'wss://desktop-sv160n9.tail4e682f.ts.net:8765/ws';
+
+let ws = null;
+let wsReady = false;
+
+// ── PIN ─────────────────────────────────────────────────────────────
 let pinEntry = '';
 const dots = document.querySelectorAll('.pin-dot');
 const pinError = document.getElementById('pin-error');
+const ss = document.createElement('style');
+ss.textContent = '@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-12px)}75%{transform:translateX(12px)}}';
+document.head.appendChild(ss);
 
-// PIN
 document.getElementById('keypad').addEventListener('click', e => {
   const k = e.target.closest('.key');
   if (!k) return;
@@ -90,31 +104,20 @@ document.getElementById('keypad').addEventListener('click', e => {
     } else {
       pinError.textContent = 'incorrect';
       document.getElementById('pin-dots').style.animation = 'shake .4s';
-      setTimeout(() => {
-        pinEntry = ''; updateDots(); pinError.textContent = '';
-        document.getElementById('pin-dots').style.animation = '';
-      }, 600);
+      setTimeout(() => { pinEntry = ''; updateDots(); pinError.textContent = ''; document.getElementById('pin-dots').style.animation = ''; }, 600);
     }
   }
 });
-function updateDots() {
-  dots.forEach((d,i) => d.classList.toggle('filled', i < pinEntry.length));
-}
+function updateDots() { dots.forEach((d,i) => d.classList.toggle('filled', i < pinEntry.length)); }
 
-// Add shake animation
-const ss = document.createElement('style');
-ss.textContent = '@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-12px)}75%{transform:translateX(12px)}}';
-document.head.appendChild(ss);
-
-// BOOT
+// ── BOOT ────────────────────────────────────────────────────────────
 function startBoot() {
-  document.getElementById('pin-screen').style.opacity = '0';
-  document.getElementById('pin-screen').style.transition = 'opacity .4s';
-  setTimeout(() => { document.getElementById('pin-screen').style.display = 'none'; }, 400);
+  const pinEl = document.getElementById('pin-screen');
+  pinEl.style.opacity = '0'; pinEl.style.transition = 'opacity .4s';
+  setTimeout(() => pinEl.style.display = 'none', 400);
 
   const bootEl = document.getElementById('boot-screen');
-  bootEl.style.opacity = '1';
-  bootEl.style.pointerEvents = 'auto';
+  bootEl.style.opacity = '1'; bootEl.style.pointerEvents = 'auto';
 
   const canvas = document.getElementById('boot-canvas');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
@@ -126,18 +129,13 @@ function startBoot() {
   const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
   camera.position.z = 80;
 
-  // Infinity curve
-  const pi2 = Math.PI * 2;
-  const length = 30, radius = 5.6;
+  const pi2 = Math.PI * 2, length = 30, radius = 5.6;
   const curve = new THREE.Curve();
-  curve.getPoint = function(percent) {
-    var x = length * Math.sin(pi2 * percent),
-        y = radius * Math.cos(pi2 * 3 * percent),
-        z, t;
-    t = percent % 0.25 / 0.25;
-    t = percent % 0.25 - (2 * (1 - t) * t * -0.0185 + t * t * 0.25);
-    if (Math.floor(percent / 0.25) == 0 || Math.floor(percent / 0.25) == 2) t *= -1;
-    z = radius * Math.sin(pi2 * 2 * (percent - t));
+  curve.getPoint = function(p) {
+    var x = length * Math.sin(pi2*p), y = radius * Math.cos(pi2*3*p), z, t;
+    t = p%0.25/0.25; t = p%0.25 - (2*(1-t)*t*-0.0185 + t*t*0.25);
+    if (Math.floor(p/0.25)==0 || Math.floor(p/0.25)==2) t *= -1;
+    z = radius * Math.sin(pi2*2*(p-t));
     return new THREE.Vector3(x, y, z);
   };
 
@@ -145,41 +143,27 @@ function startBoot() {
   const mat = new THREE.MeshBasicMaterial({ color: 0x000000 });
   const mesh = new THREE.Mesh(geo, mat);
   const group = new THREE.Group();
-  group.add(mesh);
-  scene.add(group);
+  group.add(mesh); scene.add(group);
 
-  let startTime = performance.now();
-  let transitionStarted = false;
-  let bootDone = false;
-
+  let startTime = performance.now(), transitionStarted = false, bootDone = false;
   function easeInOut(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
 
   function animateBoot() {
     if (bootDone) return;
     requestAnimationFrame(animateBoot);
     const elapsed = (performance.now() - startTime) / 1000;
-
     if (!transitionStarted) {
       mesh.rotation.x += 0.035;
       if (elapsed > 2.8) { transitionStarted = true; startTime = performance.now(); }
     } else {
-      const dur = 1.8;
-      const t = Math.min((performance.now() - startTime) / 1000 / dur, 1);
-      const e = easeInOut(t);
-      group.rotation.y = -e * Math.PI / 2;
+      const dur = 1.8, t = Math.min((performance.now()-startTime)/1000/dur, 1), e = easeInOut(t);
+      group.rotation.y = -e * Math.PI/2;
       group.position.z = e * 40;
-      mat.opacity = 1 - Math.pow(t, 2);
-      mat.transparent = true;
-
+      mat.opacity = 1 - t*t; mat.transparent = true;
       if (t >= 1) {
         bootDone = true;
-        bootEl.style.transition = 'opacity .6s';
-        bootEl.style.opacity = '0';
-        setTimeout(() => {
-          bootEl.style.display = 'none';
-          renderer.dispose();
-          startMain();
-        }, 600);
+        bootEl.style.transition = 'opacity .6s'; bootEl.style.opacity = '0';
+        setTimeout(() => { bootEl.style.display = 'none'; renderer.dispose(); startMain(); }, 600);
       }
     }
     renderer.render(scene, camera);
@@ -187,16 +171,18 @@ function startBoot() {
   animateBoot();
 }
 
-// MAIN
+// ── MAIN ────────────────────────────────────────────────────────────
 function startMain() {
   const mainEl = document.getElementById('main-screen');
-  mainEl.style.opacity = '1';
-  mainEl.style.pointerEvents = 'auto';
-  mainEl.style.transition = 'opacity .8s';
+  mainEl.style.opacity = '1'; mainEl.style.pointerEvents = 'auto'; mainEl.style.transition = 'opacity .8s';
 
   const canvas = document.getElementById('viz-canvas');
   const ctx = canvas.getContext('2d');
+  const statusEl = document.getElementById('status');
+  const transcriptEl = document.getElementById('transcript');
+  const connDot = document.getElementById('conn-dot');
   let W, H;
+
   function resize() {
     W = canvas.width = window.innerWidth * devicePixelRatio;
     H = canvas.height = window.innerHeight * devicePixelRatio;
@@ -206,166 +192,206 @@ function startMain() {
   resize();
   window.addEventListener('resize', resize);
 
-  const statusEl = document.getElementById('status');
-  const transcriptEl = document.getElementById('transcript');
-
-  // States: idle, listening, thinking, speaking
+  // State
   let state = 'idle';
+  let amplitude = 0, targetAmplitude = 0, breathPhase = 0;
   let audioCtx, analyser, dataArray, micStream;
-  let amplitude = 0;
-  let targetAmplitude = 0;
+  let mediaRecorder, audioChunks = [];
+  let messages = []; // transcript history
+  let playbackAnalyser, playbackDataArray;
 
-  // Circle params
-  const baseRadius = Math.min(W, H) * 0.12;
-  let breathPhase = 0;
+  // ── WebSocket ───────────────────────────────────────────────────
+  function connectWS() {
+    ws = new WebSocket(WS_URL);
+    ws.onopen = () => { wsReady = true; connDot.classList.add('connected'); console.log('WS connected'); };
+    ws.onclose = () => { wsReady = false; connDot.classList.remove('connected'); setTimeout(connectWS, 3000); };
+    ws.onerror = () => { wsReady = false; connDot.classList.remove('connected'); };
+    ws.onmessage = (evt) => {
+      const msg = JSON.parse(evt.data);
+      if (msg.type === 'state') setState(msg.state);
+      else if (msg.type === 'transcript') addMessage(msg.role, msg.text);
+      else if (msg.type === 'audio') playAudio(msg.audio);
+      else if (msg.type === 'error') { addMessage('system', msg.message); setState('idle'); }
+    };
+  }
+  connectWS();
 
-  function drawCircle(time) {
-    requestAnimationFrame(drawCircle);
+  // ── Transcript ──────────────────────────────────────────────────
+  function addMessage(role, text) {
+    messages.push({ role, text });
+    if (messages.length > 6) messages.shift();
+    transcriptEl.innerHTML = messages.map(m =>
+      `<div class="${m.role === 'user' ? 't-user' : 't-sam'}">${m.text}</div>`
+    ).join('');
+  }
+
+  // ── Audio playback with visualization ───────────────────────────
+  function playAudio(b64) {
+    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    audioCtx.decodeAudioData(bytes.buffer.slice(0), buffer => {
+      const src = audioCtx.createBufferSource();
+      src.buffer = buffer;
+
+      // Analyser for speaking visualization
+      playbackAnalyser = audioCtx.createAnalyser();
+      playbackAnalyser.fftSize = 256;
+      playbackDataArray = new Uint8Array(playbackAnalyser.frequencyBinCount);
+
+      src.connect(playbackAnalyser);
+      playbackAnalyser.connect(audioCtx.destination);
+
+      setState('speaking');
+      pollPlayback();
+      src.onended = () => { targetAmplitude = 0; setState('idle'); };
+      src.start();
+    }, err => {
+      console.error('Audio decode error', err);
+      setState('idle');
+    });
+  }
+
+  function pollPlayback() {
+    if (state !== 'speaking') { targetAmplitude = 0; return; }
+    requestAnimationFrame(pollPlayback);
+    if (playbackAnalyser && playbackDataArray) {
+      playbackAnalyser.getByteFrequencyData(playbackDataArray);
+      let sum = 0;
+      for (let i = 0; i < playbackDataArray.length; i++) sum += playbackDataArray[i];
+      targetAmplitude = (sum / playbackDataArray.length) / 255;
+    }
+  }
+
+  // ── Mic recording ───────────────────────────────────────────────
+  async function startRecording() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1 } });
+    } catch (e) {
+      console.warn('Mic denied', e);
+      addMessage('system', 'microphone access denied');
+      return false;
+    }
+
+    // Mic analyser for listening visualization
+    const src = audioCtx.createMediaStreamSource(micStream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+    src.connect(analyser);
+
+    // Record
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(micStream, { mimeType: 'audio/webm;codecs=opus' });
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.start();
+    return true;
+  }
+
+  async function stopRecording() {
+    if (!mediaRecorder || mediaRecorder.state === 'inactive') return null;
+    return new Promise(resolve => {
+      mediaRecorder.onstop = async () => {
+        if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+        const buffer = await blob.arrayBuffer();
+        resolve(btoa(String.fromCharCode(...new Uint8Array(buffer))));
+      };
+      mediaRecorder.stop();
+    });
+  }
+
+  function pollMic() {
+    if (state !== 'listening') { targetAmplitude = 0; return; }
+    requestAnimationFrame(pollMic);
+    if (analyser && dataArray) {
+      analyser.getByteFrequencyData(dataArray);
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+      targetAmplitude = (sum / dataArray.length) / 255;
+    }
+  }
+
+  // ── Circle visualizer ──────────────────────────────────────────
+  function draw() {
+    requestAnimationFrame(draw);
     ctx.clearRect(0, 0, W, H);
-    // BG
-    ctx.fillStyle = BG;
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
 
     breathPhase += 0.015;
     amplitude += (targetAmplitude - amplitude) * 0.12;
 
-    const cx = W / 2, cy = H / 2;
+    const cx = W/2, cy = H * 0.42;
     const br = Math.min(W, H) * 0.12;
 
     ctx.strokeStyle = 'rgba(0,0,0,0.85)';
     ctx.lineWidth = 2.5 * devicePixelRatio;
     ctx.beginPath();
 
-    const points = 128;
-    for (let i = 0; i <= points; i++) {
-      const a = (i / points) * Math.PI * 2;
+    const pts = 128;
+    for (let i = 0; i <= pts; i++) {
+      const a = (i/pts) * Math.PI * 2;
       let r = br;
 
-      // Breathing
       if (state === 'idle') {
         r += Math.sin(breathPhase) * br * 0.03;
-      }
-      // Voice response
-      if (state === 'listening' || state === 'speaking') {
-        // Organic wobble from audio
-        const wobble = amplitude * br * 0.5;
-        r += Math.sin(a * 3 + breathPhase * 2) * wobble * 0.4;
-        r += Math.sin(a * 5 - breathPhase * 1.5) * wobble * 0.25;
-        r += Math.sin(a * 7 + breathPhase * 3) * wobble * 0.15;
-        r += wobble * 0.2;
-      }
-      // Thinking pulse
-      if (state === 'thinking') {
-        r += Math.sin(breathPhase * 3) * br * 0.08;
-        // Rotation effect
-        const rot = breathPhase * 0.8;
-        r += Math.sin(a * 2 + rot) * br * 0.04;
+      } else if (state === 'listening' || state === 'speaking') {
+        const w = amplitude * br * 0.5;
+        r += Math.sin(a*3 + breathPhase*2) * w * 0.4;
+        r += Math.sin(a*5 - breathPhase*1.5) * w * 0.25;
+        r += Math.sin(a*7 + breathPhase*3) * w * 0.15;
+        r += w * 0.2;
+      } else if (state === 'thinking') {
+        r += Math.sin(breathPhase*3) * br * 0.08;
+        r += Math.sin(a*2 + breathPhase*0.8) * br * 0.04;
       }
 
       const x = cx + Math.cos(a) * r;
       const y = cy + Math.sin(a) * r;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     ctx.closePath();
     ctx.stroke();
   }
-  requestAnimationFrame(drawCircle);
+  requestAnimationFrame(draw);
 
-  // Audio
-  async function startMic() {
-    if (audioCtx) return;
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    try {
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const src = audioCtx.createMediaStreamSource(micStream);
-      analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 256;
-      dataArray = new Uint8Array(analyser.frequencyBinCount);
-      src.connect(analyser);
-      pollAudio();
-    } catch(e) {
-      console.warn('Mic denied', e);
-    }
-  }
-
-  function pollAudio() {
-    if (state !== 'listening') { targetAmplitude = 0; return; }
-    requestAnimationFrame(pollAudio);
-    analyser.getByteFrequencyData(dataArray);
-    let sum = 0;
-    for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-    targetAmplitude = (sum / dataArray.length) / 255;
-  }
-
-  function stopMic() {
-    if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
-    targetAmplitude = 0;
-  }
-
-  // STT placeholder
-  let recognition;
-  try {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SR) {
-      recognition = new SR();
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
-      recognition.onresult = e => {
-        let final = '', interim = '';
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          if (e.results[i].isFinal) final += e.results[i][0].transcript;
-          else interim += e.results[i][0].transcript;
-        }
-        transcriptEl.textContent = final || interim;
-        if (final) {
-          setState('thinking');
-          setTimeout(() => {
-            respond(final);
-          }, 1200);
-        }
-      };
-      recognition.onerror = () => setState('idle');
-      recognition.onend = () => { if (state === 'listening') setState('idle'); };
-    }
-  } catch(e) {}
-
-  function respond(text) {
-    // Placeholder TTS
-    setState('speaking');
-    const reply = "I'm here.";
-    transcriptEl.textContent = reply;
-    if ('speechSynthesis' in window) {
-      const u = new SpeechSynthesisUtterance(reply);
-      u.rate = 0.95; u.pitch = 1.1;
-      // Simulate amplitude during speech
-      const pulseInterval = setInterval(() => {
-        targetAmplitude = 0.2 + Math.random() * 0.3;
-      }, 80);
-      u.onend = () => { clearInterval(pulseInterval); targetAmplitude = 0; setState('idle'); };
-      speechSynthesis.speak(u);
-    } else {
-      setTimeout(() => { targetAmplitude = 0; setState('idle'); }, 2000);
-    }
-  }
-
+  // ── State management ────────────────────────────────────────────
   function setState(s) {
     state = s;
-    statusEl.textContent = s === 'idle' ? 'tap to talk' : s === 'listening' ? 'listening' : s === 'thinking' ? 'thinking' : 'speaking';
+    const labels = { idle: 'tap to talk', listening: 'listening', thinking: 'thinking', speaking: '' };
+    statusEl.textContent = labels[s] || s;
     statusEl.style.opacity = s === 'idle' ? '0.4' : '0.6';
-    if (s === 'listening') pollAudio();
-    if (s !== 'listening') targetAmplitude = 0;
+    if (s === 'listening') pollMic();
+    if (s !== 'listening' && s !== 'speaking') targetAmplitude = 0;
   }
 
-  // Tap to talk
+  // ── Tap interaction ─────────────────────────────────────────────
+  let tapped = false;
   mainEl.addEventListener('click', async () => {
     if (state === 'speaking' || state === 'thinking') return;
-    if (state === 'listening') { setState('idle'); stopMic(); return; }
-    await startMic();
-    setState('listening');
-    if (recognition) {
-      try { recognition.start(); } catch(e) {}
+
+    if (state === 'listening') {
+      // Stop recording, send to backend
+      setState('thinking');
+      const b64 = await stopRecording();
+      if (b64 && wsReady) {
+        ws.send(JSON.stringify({ type: 'audio', audio: b64 }));
+      } else if (!wsReady) {
+        addMessage('system', 'not connected to server');
+        setState('idle');
+      }
+      return;
+    }
+
+    // Start recording
+    const ok = await startRecording();
+    if (ok) {
+      setState('listening');
+      if (!tapped) {
+        tapped = true;
+        // Fade out "tap to talk" hint after first use
+      }
     }
   });
 }
