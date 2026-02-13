@@ -263,30 +263,57 @@ function startMain() {
     }
   }
 
-  // ── Mic recording ───────────────────────────────────────────────
+  // ── Mic recording with silence detection ─────────────────────
+  let silenceTimer = null;
+  let hasSpoken = false;
+  const SILENCE_THRESHOLD = 0.04; // amplitude below this = silence
+  const SILENCE_DURATION = 1500;  // ms of silence before auto-stop
+  const MAX_RECORD_TIME = 15000;  // max recording time ms
+  let maxRecordTimer = null;
+
   async function startRecording() {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     try {
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1 } });
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true } });
     } catch (e) {
       console.warn('Mic denied', e);
       addMessage('system', 'microphone access denied');
       return false;
     }
 
-    // Mic analyser for listening visualization
     const src = audioCtx.createMediaStreamSource(micStream);
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 256;
     dataArray = new Uint8Array(analyser.frequencyBinCount);
     src.connect(analyser);
 
-    // Record
     audioChunks = [];
-    mediaRecorder = new MediaRecorder(micStream, { mimeType: 'audio/webm;codecs=opus' });
+    hasSpoken = false;
+    silenceTimer = null;
+
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+    mediaRecorder = new MediaRecorder(micStream, { mimeType });
     mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
-    mediaRecorder.start();
+    mediaRecorder.start(100); // collect data every 100ms
+
+    // Max recording safety
+    maxRecordTimer = setTimeout(() => finishRecording(), MAX_RECORD_TIME);
+
     return true;
+  }
+
+  async function finishRecording() {
+    if (state !== 'listening') return;
+    clearTimeout(maxRecordTimer);
+    clearTimeout(silenceTimer);
+    setState('thinking');
+    const b64 = await stopRecording();
+    if (b64 && wsReady) {
+      ws.send(JSON.stringify({ type: 'audio', audio: b64 }));
+    } else if (!wsReady) {
+      addMessage('system', 'not connected');
+      setState('idle');
+    }
   }
 
   async function stopRecording() {
@@ -296,7 +323,11 @@ function startMain() {
         if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
         const blob = new Blob(audioChunks, { type: 'audio/webm' });
         const buffer = await blob.arrayBuffer();
-        resolve(btoa(String.fromCharCode(...new Uint8Array(buffer))));
+        // Convert to base64
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+        resolve(btoa(binary));
       };
       mediaRecorder.stop();
     });
@@ -309,7 +340,18 @@ function startMain() {
       analyser.getByteFrequencyData(dataArray);
       let sum = 0;
       for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-      targetAmplitude = (sum / dataArray.length) / 255;
+      const amp = (sum / dataArray.length) / 255;
+      targetAmplitude = amp;
+
+      // Silence detection
+      if (amp > SILENCE_THRESHOLD) {
+        hasSpoken = true;
+        clearTimeout(silenceTimer);
+        silenceTimer = null;
+      } else if (hasSpoken && !silenceTimer) {
+        // User was speaking and now went silent
+        silenceTimer = setTimeout(() => finishRecording(), SILENCE_DURATION);
+      }
     }
   }
 
@@ -367,31 +409,19 @@ function startMain() {
   }
 
   // ── Tap interaction ─────────────────────────────────────────────
-  let tapped = false;
   mainEl.addEventListener('click', async () => {
     if (state === 'speaking' || state === 'thinking') return;
 
+    // If already listening, force-stop and send
     if (state === 'listening') {
-      // Stop recording, send to backend
-      setState('thinking');
-      const b64 = await stopRecording();
-      if (b64 && wsReady) {
-        ws.send(JSON.stringify({ type: 'audio', audio: b64 }));
-      } else if (!wsReady) {
-        addMessage('system', 'not connected to server');
-        setState('idle');
-      }
+      finishRecording();
       return;
     }
 
-    // Start recording
+    // Start recording — silence detection will auto-stop
     const ok = await startRecording();
     if (ok) {
       setState('listening');
-      if (!tapped) {
-        tapped = true;
-        // Fade out "tap to talk" hint after first use
-      }
     }
   });
 }
