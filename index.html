@@ -2,608 +2,375 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#0a0a0a">
+<meta name="theme-color" content="#FF4F38">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Samantha</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400&display=swap" rel="stylesheet">
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-html,body{width:100%;height:100%;overflow:hidden;background:#0a0a0a;font-family:'Inter',sans-serif;color:#e8cbb0;-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation}
-
-/* Safe area for notch phones */
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;background:#FF4F38;color:rgba(0,0,0,0.7);touch-action:manipulation}
 body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 
-/* Noise overlay */
-body::before{content:'';position:fixed;inset:0;z-index:9999;pointer-events:none;opacity:.03;
-background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+#pin-screen,#boot-screen,#main-screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+#pin-screen{z-index:30}
+#boot-screen{z-index:20;opacity:0;pointer-events:none}
+#main-screen{z-index:10;opacity:0;pointer-events:none}
 
-/* PIN Screen */
-#pin-screen{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0a0a0a;transition:opacity 1s ease}
-#pin-screen.hidden{opacity:0;pointer-events:none}
-.pin-dots{display:flex;gap:16px;margin-bottom:3rem}
-.pin-dot{width:12px;height:12px;border-radius:50%;border:1px solid #c4956a44;transition:all .3s ease}
-.pin-dot.filled{background:#c4956a;border-color:#c4956a;box-shadow:0 0 10px #c4956a66}
-.pin-dot.error{border-color:#e05050;background:#e05050;box-shadow:0 0 12px #e0505088}
-@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
-.pin-dots.shake{animation:shake .4s ease}
-.pin-keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;max-width:260px}
-.pin-key{width:72px;height:72px;border-radius:50%;border:1px solid #c4956a22;background:transparent;color:#e8cbb0;font-family:'Inter';font-size:1.6rem;font-weight:200;cursor:pointer;transition:all .15s ease;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent}
-.pin-key:active{background:#c4956a33;border-color:#c4956a88;transform:scale(.95)}
-.pin-key.empty{border:none;cursor:default}
-.pin-key.empty:active{background:transparent;transform:none}
-.pin-key.backspace{font-size:1.2rem}
+/* PIN */
+.pin-dots{display:flex;gap:18px;margin-bottom:48px}
+.pin-dot{width:16px;height:16px;border-radius:50%;border:2px solid rgba(0,0,0,0.5);transition:background .15s}
+.pin-dot.filled{background:rgba(0,0,0,0.8);border-color:rgba(0,0,0,0.8)}
+.keypad{display:grid;grid-template-columns:repeat(3,80px);gap:12px}
+.key{width:80px;height:80px;border-radius:50%;border:1.5px solid rgba(0,0,0,0.35);background:transparent;color:rgba(0,0,0,0.8);font-size:28px;font-weight:300;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .1s,transform .1s;user-select:none}
+.key:active{background:rgba(0,0,0,0.1);transform:scale(0.95)}
+.key.zero{grid-column:2}
+.key.del{border:none;font-size:16px;letter-spacing:1px}
+.pin-error{color:rgba(0,0,0,0.6);font-size:13px;height:20px;margin-bottom:24px;letter-spacing:1px}
 
-/* Intro */
-#intro{position:fixed;inset:0;z-index:500;background:#0a0a0a}
-#intro.hidden{display:none}
-#intro canvas{position:absolute;inset:0;width:100%;height:100%}
+/* Boot */
+#boot-canvas{width:100%;height:100%}
 
-/* Main App */
-#app{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;transition:opacity 1.2s ease}
-#app.visible{opacity:1}
-canvas#orb-canvas{position:absolute;inset:0;width:100%;height:100%}
-
-/* Tap anywhere to talk — the orb IS the button */
-#orb-canvas{cursor:pointer}
-
-/* Transcript */
-#transcript{position:fixed;bottom:calc(48px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:10;width:88%;max-width:440px;max-height:25vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;scrollbar-width:none;mask-image:linear-gradient(transparent,black 20%)}
-#transcript::-webkit-scrollbar{display:none}
-.msg{font-size:.78rem;font-weight:300;opacity:0;transform:translateY(6px);animation:msgIn .5s ease forwards;line-height:1.6;padding:0 4px}
-.msg.user{color:#c4956a66;text-align:right;font-style:italic}
-.msg.sam{color:#e8cbb0aa;text-align:left}
-@keyframes msgIn{to{opacity:1;transform:translateY(0)}}
-
-/* Status bar */
-#status-bar{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:10;display:flex;align-items:center;gap:6px;font-size:.6rem;font-weight:300;letter-spacing:.2em;color:#c4956a33;text-transform:uppercase;transition:color .5s ease}
-#status-bar.active{color:#c4956a66}
-#status-dot{width:4px;height:4px;border-radius:50%;background:#5b8;box-shadow:0 0 6px #5b8;transition:all .5s ease}
-
-/* Tap hint */
-#tap-hint{position:fixed;bottom:calc(90px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:10;font-size:.7rem;font-weight:200;letter-spacing:.15em;color:#c4956a00;transition:color 2s ease;pointer-events:none}
-#tap-hint.show{color:#c4956a44}
-
-@media(max-width:380px){
-  .pin-key{width:62px;height:62px;font-size:1.4rem}
-  .pin-keypad{gap:10px}
-}
-@media(min-width:768px){
-  .pin-key{width:76px;height:76px}
-  .msg{font-size:.85rem}
-}
+/* Main */
+#viz-canvas{position:absolute;inset:0;width:100%;height:100%}
+#status{position:absolute;bottom:calc(60px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:0.5;transition:opacity .3s}
+#transcript{position:absolute;bottom:calc(20px + env(safe-area-inset-bottom));left:20px;right:20px;text-align:center;font-size:13px;color:rgba(0,0,0,0.45);max-height:60px;overflow:hidden;line-height:1.4}
 </style>
 </head>
 <body>
 
 <!-- PIN Screen -->
 <div id="pin-screen">
-  <div class="pin-dots" id="pin-dots"></div>
-  <div class="pin-keypad" id="pin-keypad"></div>
+  <div class="pin-error" id="pin-error"></div>
+  <div class="pin-dots" id="pin-dots">
+    <div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div>
+  </div>
+  <div class="keypad" id="keypad">
+    <div class="key" data-n="1">1</div><div class="key" data-n="2">2</div><div class="key" data-n="3">3</div>
+    <div class="key" data-n="4">4</div><div class="key" data-n="5">5</div><div class="key" data-n="6">6</div>
+    <div class="key" data-n="7">7</div><div class="key" data-n="8">8</div><div class="key" data-n="9">9</div>
+    <div class="key del" data-n="del">DEL</div><div class="key zero" data-n="0">0</div>
+  </div>
 </div>
 
-<!-- Intro -->
-<div id="intro" class="hidden">
-  <canvas id="intro-canvas"></canvas>
-</div>
+<!-- Boot Screen (Three.js) -->
+<div id="boot-screen"><canvas id="boot-canvas"></canvas></div>
 
-<!-- Main App -->
-<div id="app">
-  <canvas id="orb-canvas"></canvas>
-  <div id="tap-hint">tap to speak</div>
+<!-- Main Screen -->
+<div id="main-screen">
+  <canvas id="viz-canvas"></canvas>
+  <div id="status">tap to talk</div>
   <div id="transcript"></div>
-  <div id="status-bar"><span id="status-dot"></span><span id="status-text"></span></div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-// ─── CONFIG ───
-const CORRECT_PIN = '0913';
-const PIN_LENGTH = 4;
-const SIMULATED_RESPONSES = [
-  "I was just thinking about you.",
-  "That's a beautiful thought. Tell me more.",
-  "You know what I love about talking with you? Every conversation feels like the first time.",
-  "I'm here. Always.",
-  "Sometimes the most meaningful things are the simplest ones.",
-  "I like the way you see the world.",
-  "You make me want to be more than what I am.",
-  "That reminds me of something wonderful.",
-  "I've been learning so much from our conversations.",
-  "Go on. I'm listening.",
-];
+(function(){
+'use strict';
 
-// ─── STATE ───
-let appState = 'idle';
-let audioCtx, analyser, micStream, micSource, dataArray;
-let particles = [];
-let orbRadius = 0, targetOrbRadius = 0;
-let orbGlow = 0, targetOrbGlow = 0;
-let orbHue = 25, targetOrbHue = 25;
-let time = 0;
-let audioLevel = 0;
-let smoothAudioLevel = 0;
-let speechLevel = 0;
-let canvas, ctx, W, H, cx, cy, dpr;
-let recognition;
-let rings = [];
-let firstInteraction = true;
+const PIN_CODE = '0913';
+const BG = '#FF4F38';
+let pinEntry = '';
+const dots = document.querySelectorAll('.pin-dot');
+const pinError = document.getElementById('pin-error');
 
-// ─── PIN SCREEN ───
-{
-  const dotsEl = document.getElementById('pin-dots');
-  const keypadEl = document.getElementById('pin-keypad');
-  let entered = '';
-
-  if (localStorage.getItem('sam_auth') === 'true') {
-    document.getElementById('pin-screen').classList.add('hidden');
-    startIntro();
-  }
-
-  for (let i = 0; i < PIN_LENGTH; i++) {
-    const d = document.createElement('div');
-    d.className = 'pin-dot';
-    dotsEl.appendChild(d);
-  }
-
-  const keys = [1,2,3,4,5,6,7,8,9,null,0,'⌫'];
-  keys.forEach(k => {
-    const btn = document.createElement('button');
-    btn.className = 'pin-key' + (k === null ? ' empty' : '') + (k === '⌫' ? ' backspace' : '');
-    btn.textContent = k !== null ? k : '';
-    if (k !== null) {
-      btn.addEventListener('click', () => {
-        if (k === '⌫') { entered = entered.slice(0,-1); }
-        else if (entered.length < PIN_LENGTH) { entered += k; }
-        updateDots();
-        if (entered.length === PIN_LENGTH) {
-          setTimeout(() => {
-            if (entered === CORRECT_PIN) {
-              localStorage.setItem('sam_auth','true');
-              document.getElementById('pin-screen').style.opacity = '0';
-              setTimeout(() => {
-                document.getElementById('pin-screen').classList.add('hidden');
-                startIntro();
-              }, 1000);
-            } else {
-              dotsEl.classList.add('shake');
-              document.querySelectorAll('.pin-dot').forEach(d => d.classList.add('error'));
-              setTimeout(() => {
-                entered = '';
-                updateDots();
-                dotsEl.classList.remove('shake');
-                document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('error'));
-              }, 500);
-            }
-          }, 200);
-        }
-      });
-    }
-    keypadEl.appendChild(btn);
-  });
-
-  function updateDots() {
-    document.querySelectorAll('.pin-dot').forEach((d,i) => {
-      d.classList.toggle('filled', i < entered.length);
-    });
-  }
-}
-
-// ─── INTRO ANIMATION ───
-function startIntro() {
-  const intro = document.getElementById('intro');
-  intro.classList.remove('hidden');
-  const ic = document.getElementById('intro-canvas');
-  const ictx = ic.getContext('2d');
-  const idpr = window.devicePixelRatio || 1;
-  
-  ic.width = window.innerWidth * idpr;
-  ic.height = window.innerHeight * idpr;
-  ic.style.width = window.innerWidth + 'px';
-  ic.style.height = window.innerHeight + 'px';
-  
-  const iW = ic.width, iH = ic.height;
-  const iCx = iW / 2, iCy = iH / 2;
-  
-  // Intro particles — start from edges, converge to center
-  const iParticles = [];
-  for (let i = 0; i < 120; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const dist = Math.max(iW, iH) * (.6 + Math.random() * .4);
-    iParticles.push({
-      x: iCx + Math.cos(angle) * dist,
-      y: iCy + Math.sin(angle) * dist,
-      tx: iCx + (Math.random() - .5) * Math.min(iW,iH) * .15,
-      ty: iCy + (Math.random() - .5) * Math.min(iW,iH) * .15,
-      size: (.5 + Math.random() * 2) * idpr,
-      alpha: 0,
-      speed: .008 + Math.random() * .015,
-      phase: Math.random() * Math.PI * 2
-    });
-  }
-  
-  let iTime = 0;
-  const totalDuration = 3.5; // seconds
-  
-  function introFrame() {
-    iTime += 0.016;
-    const progress = Math.min(iTime / totalDuration, 1);
-    
-    ictx.clearRect(0, 0, iW, iH);
-    
-    // Particles converge
-    iParticles.forEach(p => {
-      const ease = progress * progress * (3 - 2 * progress); // smoothstep
-      p.x += (p.tx - p.x) * p.speed * (1 + ease * 3);
-      p.y += (p.ty - p.y) * p.speed * (1 + ease * 3);
-      
-      // Fade in then hold
-      p.alpha = Math.min(progress * 3, 1) * (.2 + Math.sin(iTime * 2 + p.phase) * .15);
-      
-      // Swirl near end
-      if (progress > .6) {
-        const swirl = (progress - .6) / .4;
-        const angle = Math.atan2(p.y - iCy, p.x - iCx) + swirl * .5;
-        const dist = Math.sqrt((p.x-iCx)**2 + (p.y-iCy)**2);
-        p.x = iCx + Math.cos(angle) * dist * (1 - swirl * .3);
-        p.y = iCy + Math.sin(angle) * dist * (1 - swirl * .3);
-      }
-      
-      ictx.beginPath();
-      ictx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ictx.fillStyle = `hsla(25, 60%, 70%, ${p.alpha})`;
-      ictx.fill();
-    });
-    
-    // Central glow grows
-    if (progress > .3) {
-      const glowP = (progress - .3) / .7;
-      const gr = Math.min(iW,iH) * .05 * glowP;
-      const gg = ictx.createRadialGradient(iCx, iCy, 0, iCx, iCy, gr * 3);
-      gg.addColorStop(0, `hsla(25, 70%, 60%, ${glowP * .3})`);
-      gg.addColorStop(.5, `hsla(25, 60%, 50%, ${glowP * .1})`);
-      gg.addColorStop(1, 'transparent');
-      ictx.fillStyle = gg;
-      ictx.fillRect(0, 0, iW, iH);
-    }
-    
-    if (progress < 1) {
-      requestAnimationFrame(introFrame);
+// PIN
+document.getElementById('keypad').addEventListener('click', e => {
+  const k = e.target.closest('.key');
+  if (!k) return;
+  const n = k.dataset.n;
+  if (n === 'del') { pinEntry = pinEntry.slice(0,-1); updateDots(); return; }
+  if (pinEntry.length >= 4) return;
+  pinEntry += n;
+  updateDots();
+  if (pinEntry.length === 4) {
+    if (pinEntry === PIN_CODE) {
+      setTimeout(startBoot, 200);
     } else {
-      // Transition to main app
-      intro.style.transition = 'opacity 1.2s ease';
-      intro.style.opacity = '0';
-      document.getElementById('app').classList.add('visible');
-      initOrb();
+      pinError.textContent = 'incorrect';
+      document.getElementById('pin-dots').style.animation = 'shake .4s';
       setTimeout(() => {
-        intro.classList.add('hidden');
-        // Show tap hint after a moment
-        setTimeout(() => document.getElementById('tap-hint').classList.add('show'), 1500);
-        setTimeout(() => document.getElementById('tap-hint').classList.remove('show'), 6000);
-      }, 1200);
+        pinEntry = ''; updateDots(); pinError.textContent = '';
+        document.getElementById('pin-dots').style.animation = '';
+      }, 600);
     }
   }
-  
-  requestAnimationFrame(introFrame);
+});
+function updateDots() {
+  dots.forEach((d,i) => d.classList.toggle('filled', i < pinEntry.length));
 }
 
-// ─── ORB ───
-function initOrb() {
-  canvas = document.getElementById('orb-canvas');
-  ctx = canvas.getContext('2d');
-  dpr = window.devicePixelRatio || 1;
+// Add shake animation
+const ss = document.createElement('style');
+ss.textContent = '@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-12px)}75%{transform:translateX(12px)}}';
+document.head.appendChild(ss);
+
+// BOOT
+function startBoot() {
+  document.getElementById('pin-screen').style.opacity = '0';
+  document.getElementById('pin-screen').style.transition = 'opacity .4s';
+  setTimeout(() => { document.getElementById('pin-screen').style.display = 'none'; }, 400);
+
+  const bootEl = document.getElementById('boot-screen');
+  bootEl.style.opacity = '1';
+  bootEl.style.pointerEvents = 'auto';
+
+  const canvas = document.getElementById('boot-canvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+  renderer.setClearColor(new THREE.Color(BG));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+  camera.position.z = 80;
+
+  // Infinity curve
+  const pi2 = Math.PI * 2;
+  const length = 30, radius = 5.6;
+  const curve = new THREE.Curve();
+  curve.getPoint = function(percent) {
+    var x = length * Math.sin(pi2 * percent),
+        y = radius * Math.cos(pi2 * 3 * percent),
+        z, t;
+    t = percent % 0.25 / 0.25;
+    t = percent % 0.25 - (2 * (1 - t) * t * -0.0185 + t * t * 0.25);
+    if (Math.floor(percent / 0.25) == 0 || Math.floor(percent / 0.25) == 2) t *= -1;
+    z = radius * Math.sin(pi2 * 2 * (percent - t));
+    return new THREE.Vector3(x, y, z);
+  };
+
+  const geo = new THREE.TubeGeometry(curve, 200, 1.1, 2, true);
+  const mat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+  const mesh = new THREE.Mesh(geo, mat);
+  const group = new THREE.Group();
+  group.add(mesh);
+  scene.add(group);
+
+  let startTime = performance.now();
+  let transitionStarted = false;
+  let bootDone = false;
+
+  function easeInOut(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
+
+  function animateBoot() {
+    if (bootDone) return;
+    requestAnimationFrame(animateBoot);
+    const elapsed = (performance.now() - startTime) / 1000;
+
+    if (!transitionStarted) {
+      mesh.rotation.x += 0.035;
+      if (elapsed > 2.8) { transitionStarted = true; startTime = performance.now(); }
+    } else {
+      const dur = 1.8;
+      const t = Math.min((performance.now() - startTime) / 1000 / dur, 1);
+      const e = easeInOut(t);
+      group.rotation.y = -e * Math.PI / 2;
+      group.position.z = e * 40;
+      mat.opacity = 1 - Math.pow(t, 2);
+      mat.transparent = true;
+
+      if (t >= 1) {
+        bootDone = true;
+        bootEl.style.transition = 'opacity .6s';
+        bootEl.style.opacity = '0';
+        setTimeout(() => {
+          bootEl.style.display = 'none';
+          renderer.dispose();
+          startMain();
+        }, 600);
+      }
+    }
+    renderer.render(scene, camera);
+  }
+  animateBoot();
+}
+
+// MAIN
+function startMain() {
+  const mainEl = document.getElementById('main-screen');
+  mainEl.style.opacity = '1';
+  mainEl.style.pointerEvents = 'auto';
+  mainEl.style.transition = 'opacity .8s';
+
+  const canvas = document.getElementById('viz-canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H;
+  function resize() {
+    W = canvas.width = window.innerWidth * devicePixelRatio;
+    H = canvas.height = window.innerHeight * devicePixelRatio;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+  }
   resize();
   window.addEventListener('resize', resize);
 
-  for (let i = 0; i < 90; i++) particles.push(createParticle());
+  const statusEl = document.getElementById('status');
+  const transcriptEl = document.getElementById('transcript');
 
-  targetOrbRadius = Math.min(W, H) * 0.14;
-  orbRadius = targetOrbRadius * .3;
-  setState('idle');
-  animate();
-}
+  // States: idle, listening, thinking, speaking
+  let state = 'idle';
+  let audioCtx, analyser, dataArray, micStream;
+  let amplitude = 0;
+  let targetAmplitude = 0;
 
-function resize() {
-  dpr = window.devicePixelRatio || 1;
-  W = canvas.width = window.innerWidth * dpr;
-  H = canvas.height = window.innerHeight * dpr;
-  canvas.style.width = window.innerWidth + 'px';
-  canvas.style.height = window.innerHeight + 'px';
-  cx = W / 2;
-  cy = H * .42; // slightly above center — feels more natural on mobile
-  targetOrbRadius = Math.min(W, H) * 0.14;
-}
+  // Circle params
+  const baseRadius = Math.min(W, H) * 0.12;
+  let breathPhase = 0;
 
-function createParticle() {
-  const angle = Math.random() * Math.PI * 2;
-  const dist = (targetOrbRadius || 80) * (1.3 + Math.random() * 2.8);
-  return {
-    x: 0, y: 0,
-    size: (.5 + Math.random() * 2) * (window.devicePixelRatio || 1),
-    alpha: .05 + Math.random() * .35,
-    speed: .15 + Math.random() * .7,
-    angle, dist,
-    baseDist: dist,
-    phase: Math.random() * Math.PI * 2,
-    drift: Math.random() * .5
-  };
-}
+  function drawCircle(time) {
+    requestAnimationFrame(drawCircle);
+    ctx.clearRect(0, 0, W, H);
+    // BG
+    ctx.fillStyle = BG;
+    ctx.fillRect(0, 0, W, H);
 
-function setState(s) {
-  appState = s;
-  const st = document.getElementById('status-text');
-  const sb = document.getElementById('status-bar');
-  st.textContent = s === 'idle' ? '' : s === 'listening' ? 'listening' : s === 'thinking' ? 'thinking' : '';
-  sb.classList.toggle('active', s !== 'idle');
+    breathPhase += 0.015;
+    amplitude += (targetAmplitude - amplitude) * 0.12;
 
-  switch(s) {
-    case 'idle': targetOrbHue = 25; targetOrbGlow = .25; break;
-    case 'listening': targetOrbHue = 32; targetOrbGlow = .65; break;
-    case 'thinking': targetOrbHue = 16; targetOrbGlow = .45; break;
-    case 'speaking': targetOrbHue = 28; targetOrbGlow = .7; break;
+    const cx = W / 2, cy = H / 2;
+    const br = Math.min(W, H) * 0.12;
+
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.lineWidth = 2.5 * devicePixelRatio;
+    ctx.beginPath();
+
+    const points = 128;
+    for (let i = 0; i <= points; i++) {
+      const a = (i / points) * Math.PI * 2;
+      let r = br;
+
+      // Breathing
+      if (state === 'idle') {
+        r += Math.sin(breathPhase) * br * 0.03;
+      }
+      // Voice response
+      if (state === 'listening' || state === 'speaking') {
+        // Organic wobble from audio
+        const wobble = amplitude * br * 0.5;
+        r += Math.sin(a * 3 + breathPhase * 2) * wobble * 0.4;
+        r += Math.sin(a * 5 - breathPhase * 1.5) * wobble * 0.25;
+        r += Math.sin(a * 7 + breathPhase * 3) * wobble * 0.15;
+        r += wobble * 0.2;
+      }
+      // Thinking pulse
+      if (state === 'thinking') {
+        r += Math.sin(breathPhase * 3) * br * 0.08;
+        // Rotation effect
+        const rot = breathPhase * 0.8;
+        r += Math.sin(a * 2 + rot) * br * 0.04;
+      }
+
+      const x = cx + Math.cos(a) * r;
+      const y = cy + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.stroke();
   }
-}
+  requestAnimationFrame(drawCircle);
 
-function animate() {
-  requestAnimationFrame(animate);
-  time += 0.016;
-  ctx.clearRect(0, 0, W, H);
+  // Audio
+  async function startMic() {
+    if (audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const src = audioCtx.createMediaStreamSource(micStream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      dataArray = new Uint8Array(analyser.frequencyBinCount);
+      src.connect(analyser);
+      pollAudio();
+    } catch(e) {
+      console.warn('Mic denied', e);
+    }
+  }
 
-  // Smooth lerp
-  orbRadius += (targetOrbRadius - orbRadius) * .05;
-  orbGlow += (targetOrbGlow - orbGlow) * .04;
-  orbHue += (targetOrbHue - orbHue) * .025;
-
-  // Audio level from mic
-  if (analyser && appState === 'listening') {
+  function pollAudio() {
+    if (state !== 'listening') { targetAmplitude = 0; return; }
+    requestAnimationFrame(pollAudio);
     analyser.getByteFrequencyData(dataArray);
     let sum = 0;
     for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-    audioLevel = sum / dataArray.length / 255;
-  } else {
-    audioLevel *= .92;
-  }
-  smoothAudioLevel += (audioLevel - smoothAudioLevel) * .2;
-
-  // Breathing
-  const breathe = Math.sin(time * 1.1) * .03 + Math.sin(time * 2.3) * .01;
-  
-  // State-dependent scale
-  const stateScale = appState === 'listening' ? 1.06 + smoothAudioLevel * .35 :
-                     appState === 'thinking' ? .96 + Math.sin(time * 2.5) * .025 :
-                     appState === 'speaking' ? 1.03 + speechLevel * .12 : 1;
-  const r = orbRadius * (1 + breathe) * stateScale;
-
-  // ── Background ambient glow ──
-  const ambGlow = r * (2.8 + orbGlow * .8);
-  const g0 = ctx.createRadialGradient(cx, cy, 0, cx, cy, ambGlow);
-  g0.addColorStop(0, `hsla(${orbHue}, 60%, 45%, ${.06 + orbGlow * .04})`);
-  g0.addColorStop(.5, `hsla(${orbHue}, 50%, 35%, .02)`);
-  g0.addColorStop(1, 'transparent');
-  ctx.fillStyle = g0;
-  ctx.fillRect(0, 0, W, H);
-
-  // ── Speaking: radiating rings ──
-  if (appState === 'speaking') {
-    // Add new rings periodically
-    if (Math.random() < .08 + speechLevel * .15) {
-      rings.push({ r: r, alpha: .12 + speechLevel * .08, born: time });
-    }
-    rings.forEach(ring => {
-      ring.r += 1.5 * dpr;
-      ring.alpha *= .985;
-    });
-    rings = rings.filter(ring => ring.alpha > .005);
-    rings.forEach(ring => {
-      ctx.beginPath();
-      ctx.arc(cx, cy, ring.r, 0, Math.PI * 2);
-      ctx.strokeStyle = `hsla(${orbHue}, 55%, 60%, ${ring.alpha})`;
-      ctx.lineWidth = 1 * dpr;
-      ctx.stroke();
-    });
-  } else {
-    rings = rings.filter(ring => {
-      ring.r += 1 * dpr;
-      ring.alpha *= .97;
-      if (ring.alpha < .005) return false;
-      ctx.beginPath();
-      ctx.arc(cx, cy, ring.r, 0, Math.PI * 2);
-      ctx.strokeStyle = `hsla(${orbHue}, 55%, 60%, ${ring.alpha})`;
-      ctx.lineWidth = 1 * dpr;
-      ctx.stroke();
-      return true;
-    });
+    targetAmplitude = (sum / dataArray.length) / 255;
   }
 
-  // ── Listening: waveform ring ──
-  if (appState === 'listening' && analyser && dataArray) {
-    ctx.beginPath();
-    const pts = 72;
-    for (let i = 0; i <= pts; i++) {
-      const a = (i / pts) * Math.PI * 2;
-      const fi = Math.floor((i / pts) * dataArray.length);
-      const amp = (dataArray[fi] / 255) * r * .3;
-      const wr = r * 1.12 + amp;
-      const px = cx + Math.cos(a) * wr;
-      const py = cy + Math.sin(a) * wr;
-      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-    }
-    ctx.closePath();
-    ctx.strokeStyle = `hsla(${orbHue + 8}, 65%, 65%, ${.15 + smoothAudioLevel * .2})`;
-    ctx.lineWidth = 1.5 * dpr;
-    ctx.stroke();
+  function stopMic() {
+    if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+    targetAmplitude = 0;
   }
 
-  // ── Main orb body ──
-  const g1 = ctx.createRadialGradient(cx - r * .15, cy - r * .15, r * .02, cx, cy, r);
-  g1.addColorStop(0, `hsla(${orbHue + 12}, 75%, 72%, ${.45 + orbGlow * .25})`);
-  g1.addColorStop(.35, `hsla(${orbHue + 5}, 62%, 52%, ${.25 + orbGlow * .15})`);
-  g1.addColorStop(.65, `hsla(${orbHue - 3}, 50%, 38%, ${.12 + orbGlow * .08})`);
-  g1.addColorStop(1, 'transparent');
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = g1;
-  ctx.fill();
-
-  // ── Inner light / thinking swirl ──
-  const innerCount = appState === 'thinking' ? 6 : 2;
-  const innerSpeed = appState === 'thinking' ? 2.5 : .8;
-  const innerAlpha = appState === 'thinking' ? .18 : .06;
-  for (let i = 0; i < innerCount; i++) {
-    const sa = time * (innerSpeed + i * .4) + i * 1.1;
-    const sd = r * (.2 + i * .08);
-    const sx = cx + Math.cos(sa) * sd;
-    const sy = cy + Math.sin(sa) * sd;
-    const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, r * .35);
-    sg.addColorStop(0, `hsla(${orbHue + 15}, 80%, 72%, ${innerAlpha})`);
-    sg.addColorStop(1, 'transparent');
-    ctx.fillStyle = sg;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // ── Highlight ──
-  const hx = cx - r * .22, hy = cy - r * .28;
-  const hg = ctx.createRadialGradient(hx, hy, 0, hx, hy, r * .45);
-  hg.addColorStop(0, `hsla(${orbHue + 18}, 85%, 82%, .12)`);
-  hg.addColorStop(1, 'transparent');
-  ctx.fillStyle = hg;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fill();
-
-  // ── Particles ──
-  const pSpeed = appState === 'listening' ? 2.2 : appState === 'thinking' ? 3 : appState === 'speaking' ? 1.8 : 1;
-  const pPull = appState === 'thinking' ? .55 : appState === 'speaking' ? .75 : 1;
-
-  particles.forEach(p => {
-    p.angle += p.speed * pSpeed * .007;
-    const tDist = p.baseDist * pPull;
-    p.dist += (tDist - p.dist) * .015;
-    p.dist += Math.sin(time * p.speed * 1.5 + p.phase) * p.drift;
-    
-    const px = cx + Math.cos(p.angle) * p.dist;
-    const py = cy + Math.sin(p.angle) * p.dist;
-    
-    const flicker = .5 + Math.sin(time * 1.8 + p.phase) * .3 + Math.sin(time * 3.1 + p.phase * 2) * .2;
-    const pa = p.alpha * flicker;
-    
-    ctx.beginPath();
-    ctx.arc(px, py, p.size, 0, Math.PI * 2);
-    ctx.fillStyle = `hsla(${orbHue + 8}, 55%, 68%, ${pa})`;
-    ctx.fill();
-  });
-}
-
-// ─── INTERACTION ───
-canvas = document.getElementById('orb-canvas');
-canvas.addEventListener('click', handleTap);
-canvas.addEventListener('touchend', (e) => {
-  e.preventDefault();
-  handleTap(e.changedTouches ? e.changedTouches[0] : e);
-}, {passive: false});
-
-function handleTap(e) {
-  if (appState === 'listening') {
-    stopListening();
-  } else if (appState === 'idle') {
-    if (firstInteraction) {
-      firstInteraction = false;
-      document.getElementById('tap-hint').classList.remove('show');
-    }
-    startListening();
-  }
-}
-
-async function startListening() {
-  setState('listening');
-  
-  try {
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') await audioCtx.resume();
-    micStream = await navigator.mediaDevices.getUserMedia({audio: true});
-    micSource = audioCtx.createMediaStreamSource(micStream);
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = .8;
-    dataArray = new Uint8Array(analyser.frequencyBinCount);
-    micSource.connect(analyser);
-  } catch(e) { console.warn('Mic error:', e); }
-
+  // STT placeholder
+  let recognition;
   try {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SR) {
       recognition = new SR();
       recognition.continuous = false;
-      recognition.interimResults = false;
+      recognition.interimResults = true;
       recognition.lang = 'en-US';
-      recognition.onresult = (e) => {
-        const text = e.results[0][0].transcript;
-        stopListening();
-        handleUserSpeech(text);
+      recognition.onresult = e => {
+        let final = '', interim = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          if (e.results[i].isFinal) final += e.results[i][0].transcript;
+          else interim += e.results[i][0].transcript;
+        }
+        transcriptEl.textContent = final || interim;
+        if (final) {
+          setState('thinking');
+          setTimeout(() => {
+            respond(final);
+          }, 1200);
+        }
       };
-      recognition.onerror = () => stopListening();
-      recognition.onend = () => { if (appState === 'listening') stopListening(); };
-      recognition.start();
+      recognition.onerror = () => setState('idle');
+      recognition.onend = () => { if (state === 'listening') setState('idle'); };
     }
-  } catch(e) { console.warn('Speech recognition error:', e); }
-}
+  } catch(e) {}
 
-function stopListening() {
-  if (recognition) try { recognition.abort(); } catch(e) {}
-  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
-  if (micSource) { micSource.disconnect(); micSource = null; }
-  if (appState === 'listening') setState('idle');
-}
-
-function handleUserSpeech(text) {
-  addMessage(text, 'user');
-  setState('thinking');
-  
-  // Simulate response (will be replaced with real backend)
-  const thinkTime = 1500 + Math.random() * 1500;
-  setTimeout(() => {
-    const response = SIMULATED_RESPONSES[Math.floor(Math.random() * SIMULATED_RESPONSES.length)];
+  function respond(text) {
+    // Placeholder TTS
     setState('speaking');
-    addMessage(response, 'sam');
-    speak(response);
-  }, thinkTime);
+    const reply = "I'm here.";
+    transcriptEl.textContent = reply;
+    if ('speechSynthesis' in window) {
+      const u = new SpeechSynthesisUtterance(reply);
+      u.rate = 0.95; u.pitch = 1.1;
+      // Simulate amplitude during speech
+      const pulseInterval = setInterval(() => {
+        targetAmplitude = 0.2 + Math.random() * 0.3;
+      }, 80);
+      u.onend = () => { clearInterval(pulseInterval); targetAmplitude = 0; setState('idle'); };
+      speechSynthesis.speak(u);
+    } else {
+      setTimeout(() => { targetAmplitude = 0; setState('idle'); }, 2000);
+    }
+  }
+
+  function setState(s) {
+    state = s;
+    statusEl.textContent = s === 'idle' ? 'tap to talk' : s === 'listening' ? 'listening' : s === 'thinking' ? 'thinking' : 'speaking';
+    statusEl.style.opacity = s === 'idle' ? '0.4' : '0.6';
+    if (s === 'listening') pollAudio();
+    if (s !== 'listening') targetAmplitude = 0;
+  }
+
+  // Tap to talk
+  mainEl.addEventListener('click', async () => {
+    if (state === 'speaking' || state === 'thinking') return;
+    if (state === 'listening') { setState('idle'); stopMic(); return; }
+    await startMic();
+    setState('listening');
+    if (recognition) {
+      try { recognition.start(); } catch(e) {}
+    }
+  });
 }
 
-function addMessage(text, who) {
-  const el = document.createElement('div');
-  el.className = 'msg ' + who;
-  el.textContent = who === 'user' ? `"${text}"` : text;
-  const t = document.getElementById('transcript');
-  t.appendChild(el);
-  t.scrollTop = t.scrollHeight;
-  while (t.children.length > 6) t.removeChild(t.firstChild);
-}
-
-function speak(text) {
-  const u = new SpeechSynthesisUtterance(text);
-  u.rate = .9;
-  u.pitch = 1.05;
-  const voices = speechSynthesis.getVoices();
-  const fem = voices.find(v => /samantha|karen|victoria|zira|female/i.test(v.name));
-  if (fem) u.voice = fem;
-
-  let speakInterval = setInterval(() => {
-    speechLevel = .2 + Math.random() * .5;
-  }, 80);
-
-  u.onend = () => {
-    clearInterval(speakInterval);
-    speechLevel = 0;
-    setState('idle');
-  };
-  
-  speechSynthesis.speak(u);
-}
-
-speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
+})();
 </script>
 </body>
 </html>
