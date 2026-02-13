@@ -32,9 +32,10 @@ body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-i
 
 #viz-canvas{position:absolute;inset:0;width:100%;height:100%}
 #status{position:absolute;bottom:calc(60px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:0.5;transition:opacity .3s}
-#transcript{position:absolute;bottom:calc(20px + env(safe-area-inset-bottom));left:20px;right:20px;text-align:center;font-size:13px;color:rgba(0,0,0,0.45);max-height:80px;overflow:hidden;line-height:1.5}
-.t-user{opacity:0.5;font-style:italic}
-.t-sam{opacity:0.7}
+#transcript{position:absolute;bottom:calc(20px + env(safe-area-inset-bottom));left:20px;right:20px;text-align:center;font-size:13px;color:rgba(0,0,0,0.35);max-height:40px;overflow:hidden;line-height:1.5}
+#response-text{position:absolute;left:24px;right:24px;top:50%;transform:translateY(40px);text-align:center;font-size:17px;font-weight:300;color:white;line-height:1.6;letter-spacing:0.3px;opacity:0;transition:opacity 0.8s ease,transform 0.8s ease;pointer-events:none}
+#response-text.visible{opacity:1;transform:translateY(50px)}
+#response-text.fade-out{opacity:0;transform:translateY(60px)}
 #conn-dot{position:absolute;top:calc(12px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));width:8px;height:8px;border-radius:50%;background:rgba(0,0,0,0.2);transition:background .3s}
 #conn-dot.connected{background:#1a1a1a}
 </style>
@@ -59,6 +60,7 @@ body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-i
 <div id="main-screen">
   <canvas id="viz-canvas"></canvas>
   <div id="conn-dot"></div>
+  <div id="response-text"></div>
   <div id="status">tap to talk</div>
   <div id="transcript"></div>
 </div>
@@ -209,20 +211,38 @@ function startMain() {
     ws.onmessage = (evt) => {
       const msg = JSON.parse(evt.data);
       if (msg.type === 'state') setState(msg.state);
-      else if (msg.type === 'transcript') addMessage(msg.role, msg.text);
+      else if (msg.type === 'transcript') { if (msg.role === 'user') showUserText(msg.text); }
+      else if (msg.type === 'response') { showResponseText(msg.text); playAudio(msg.audio); }
       else if (msg.type === 'audio') playAudio(msg.audio);
-      else if (msg.type === 'error') { addMessage('system', msg.message); setState('idle'); }
+      else if (msg.type === 'error') { showUserText(msg.message); setState('idle'); }
     };
   }
   connectWS();
 
-  // ── Transcript ──────────────────────────────────────────────────
-  function addMessage(role, text) {
-    messages.push({ role, text });
-    if (messages.length > 6) messages.shift();
-    transcriptEl.innerHTML = messages.map(m =>
-      `<div class="${m.role === 'user' ? 't-user' : 't-sam'}">${m.text}</div>`
-    ).join('');
+  // ── Text display ─────────────────────────────────────────────────
+  const responseTextEl = document.getElementById('response-text');
+  let fadeOutTimer = null;
+
+  function showUserText(text) {
+    transcriptEl.textContent = text;
+  }
+
+  function showResponseText(text) {
+    // Clear any pending fade-out
+    clearTimeout(fadeOutTimer);
+    responseTextEl.textContent = text;
+    responseTextEl.className = '';
+    // Trigger reflow then fade in
+    void responseTextEl.offsetWidth;
+    responseTextEl.className = 'visible';
+  }
+
+  function hideResponseText() {
+    responseTextEl.className = 'visible fade-out';
+    fadeOutTimer = setTimeout(() => {
+      responseTextEl.className = '';
+      responseTextEl.textContent = '';
+    }, 1000);
   }
 
   // ── Audio playback with visualization ───────────────────────────
@@ -244,7 +264,7 @@ function startMain() {
 
       setState('speaking');
       pollPlayback();
-      src.onended = () => { targetAmplitude = 0; setState('idle'); };
+      src.onended = () => { targetAmplitude = 0; setState('idle'); hideResponseText(); };
       src.start();
     }, err => {
       console.error('Audio decode error', err);
@@ -419,6 +439,8 @@ function startMain() {
     }
 
     // Start recording — silence detection will auto-stop
+    hideResponseText();
+    transcriptEl.textContent = '';
     const ok = await startRecording();
     if (ok) {
       setState('listening');
