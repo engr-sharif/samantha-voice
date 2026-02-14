@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#FF4F38">
 <meta name="mobile-web-app-capable" content="yes">
-<title>Samantha</title>
+<title>Samantha • Streaming</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;background:#FF4F38;color:rgba(0,0,0,0.7);touch-action:manipulation}
@@ -38,6 +38,13 @@ body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-i
 #response-text.fade-out{opacity:0;transform:translateY(60px)}
 #conn-dot{position:absolute;top:calc(12px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));width:8px;height:8px;border-radius:50%;background:rgba(0,0,0,0.2);transition:background .3s}
 #conn-dot.connected{background:#1a1a1a}
+
+/* Streaming indicators */
+#streaming-indicator{position:absolute;top:calc(12px + env(safe-area-inset-top));left:calc(12px + env(safe-area-inset-left));font-size:10px;color:rgba(0,0,0,0.6);opacity:0;transition:opacity .3s}
+#streaming-indicator.active{opacity:1}
+
+#latency-display{position:absolute;bottom:calc(100px + env(safe-area-inset-bottom));left:20px;font-size:11px;color:rgba(0,0,0,0.4);opacity:0;transition:opacity .3s}
+#latency-display.visible{opacity:1}
 </style>
 </head>
 <body>
@@ -60,9 +67,11 @@ body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-i
 <div id="main-screen">
   <canvas id="viz-canvas"></canvas>
   <div id="conn-dot"></div>
+  <div id="streaming-indicator">🔴 STREAMING</div>
   <div id="response-text"></div>
   <div id="status">tap to talk</div>
   <div id="transcript"></div>
+  <div id="latency-display"></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -74,7 +83,6 @@ const PIN_CODE = '0913';
 const BG = '#FF4F38';
 
 // ── Backend config ──────────────────────────────────────────────────
-// Auto-detect: if served from the backend, use relative WS; otherwise use Tailscale
 const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.port === '8765';
 const IS_TAILSCALE = location.hostname.includes('tail');
 const WS_URL = (IS_LOCAL || IS_TAILSCALE)
@@ -148,56 +156,52 @@ function startBoot() {
   group.add(mesh); scene.add(group);
 
   let startTime = performance.now(), transitionStarted = false, bootDone = false;
-  function easeInOut(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
 
-  function animateBoot() {
-    if (bootDone) return;
-    requestAnimationFrame(animateBoot);
-    const elapsed = (performance.now() - startTime) / 1000;
-    if (!transitionStarted) {
-      mesh.rotation.x += 0.035;
-      if (elapsed > 2.8) { transitionStarted = true; startTime = performance.now(); }
-    } else {
-      const dur = 1.8, t = Math.min((performance.now()-startTime)/1000/dur, 1), e = easeInOut(t);
-      group.rotation.y = -e * Math.PI/2;
-      group.position.z = e * 40;
-      mat.opacity = 1 - t*t; mat.transparent = true;
-      if (t >= 1) {
-        bootDone = true;
-        bootEl.style.transition = 'opacity .6s'; bootEl.style.opacity = '0';
-        setTimeout(() => { bootEl.style.display = 'none'; renderer.dispose(); startMain(); }, 600);
-      }
+  function animate() {
+    const t = (performance.now() - startTime) / 1000;
+    group.rotation.x = t * 0.2;
+    group.rotation.y = t * 0.3;
+
+    if (t > 1.5 && !transitionStarted) {
+      transitionStarted = true;
+      bootEl.style.transition = 'opacity .8s'; bootEl.style.opacity = '0';
+      setTimeout(() => {
+        bootEl.style.display = 'none';
+        startMain();
+      }, 800);
     }
-    renderer.render(scene, camera);
+
+    if (!bootDone) {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
   }
-  animateBoot();
+  animate();
+
+  function startMain() {
+    bootDone = true;
+    const mainEl = document.getElementById('main-screen');
+    mainEl.style.opacity = '1'; mainEl.style.pointerEvents = 'auto';
+    initMain();
+  }
 }
 
 // ── MAIN ────────────────────────────────────────────────────────────
-function startMain() {
-  const mainEl = document.getElementById('main-screen');
-  mainEl.style.opacity = '1'; mainEl.style.pointerEvents = 'auto'; mainEl.style.transition = 'opacity .8s';
-
+function initMain() {
   const canvas = document.getElementById('viz-canvas');
   const ctx = canvas.getContext('2d');
+  const mainEl = document.getElementById('main-screen');
   const statusEl = document.getElementById('status');
   const transcriptEl = document.getElementById('transcript');
   const connDot = document.getElementById('conn-dot');
-  let W, H;
+  const streamingIndicator = document.getElementById('streaming-indicator');
+  const latencyDisplay = document.getElementById('latency-display');
 
-  // ── Early audio unlock (mobile requires user gesture) ───────
-  // Create AudioContext immediately (we're inside a user-gesture chain from PIN entry)
-  const audioCtxEarly = new (window.AudioContext || window.webkitAudioContext)();
-  // Play a silent buffer to unlock audio output on iOS/Android
-  const silentBuf = audioCtxEarly.createBuffer(1, 1, 22050);
-  const silentSrc = audioCtxEarly.createBufferSource();
-  silentSrc.buffer = silentBuf;
-  silentSrc.connect(audioCtxEarly.destination);
-  silentSrc.start();
+  let W, H, devicePixelRatio = Math.min(window.devicePixelRatio || 1, 2);
 
-  // Request mic permissions immediately after boot
+  // Request mic permission early (iOS requirement)
   navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-    stream.getTracks().forEach(t => t.stop()); // release immediately, just wanted the permission
+    stream.getTracks().forEach(t => t.stop());
     console.log('Mic permission granted');
   }).catch(e => console.warn('Mic permission denied', e));
 
@@ -213,120 +217,76 @@ function startMain() {
   // State
   let state = 'idle';
   let amplitude = 0, targetAmplitude = 0, breathPhase = 0;
-  let audioCtx = audioCtxEarly, analyser, dataArray, micStream;
+  let audioCtx, analyser, dataArray, micStream;
   let mediaRecorder, audioChunks = [];
-  let messages = []; // transcript history
   let playbackAnalyser, playbackDataArray;
 
-  // ── WebSocket ───────────────────────────────────────────────────
-  function connectWS() {
-    ws = new WebSocket(WS_URL);
-    ws.onopen = () => { wsReady = true; connDot.classList.add('connected'); console.log('WS connected'); };
-    ws.onclose = () => { wsReady = false; connDot.classList.remove('connected'); setTimeout(connectWS, 3000); };
-    ws.onerror = () => { wsReady = false; connDot.classList.remove('connected'); };
-    ws.onmessage = (evt) => {
-      const msg = JSON.parse(evt.data);
-      if (msg.type === 'state') setState(msg.state);
-      else if (msg.type === 'transcript') {
-        if (msg.role === 'user') showUserText(msg.text);
-        else if (msg.role === 'assistant') showResponseText(msg.text);
-      }
-      else if (msg.type === 'text_chunk') showResponseText((responseTextEl.textContent || '') + ' ' + msg.text);
-      else if (msg.type === 'audio_chunk') queueAudioChunk(msg.audio);
-      else if (msg.type === 'response_complete') { /* all chunks sent */ }
-      else if (msg.type === 'response') { showResponseText(msg.text); playAudio(msg.audio); }
-      else if (msg.type === 'audio') playAudio(msg.audio);
-      else if (msg.type === 'error') { showUserText(msg.message); setState('idle'); }
-    };
-  }
-  connectWS();
-
-  // ── Text display ─────────────────────────────────────────────────
-  const responseTextEl = document.getElementById('response-text');
-  let fadeOutTimer = null;
-
-  function showUserText(text) {
-    transcriptEl.textContent = text;
-  }
-
-  function showResponseText(text) {
-    // Clear any pending fade-out
-    clearTimeout(fadeOutTimer);
-    responseTextEl.textContent = text;
-    responseTextEl.className = '';
-    // Trigger reflow then fade in
-    void responseTextEl.offsetWidth;
-    responseTextEl.className = 'visible';
-  }
-
-  function hideResponseText() {
-    responseTextEl.className = 'visible fade-out';
-    fadeOutTimer = setTimeout(() => {
-      responseTextEl.className = '';
-      responseTextEl.textContent = '';
-    }, 1000);
-  }
-
-  // ── Audio playback with visualization ───────────────────────────
-  function playAudio(b64) {
-    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-
-    audioCtx.decodeAudioData(bytes.buffer.slice(0), buffer => {
-      const src = audioCtx.createBufferSource();
-      src.buffer = buffer;
-
-      // Analyser for speaking visualization
-      playbackAnalyser = audioCtx.createAnalyser();
-      playbackAnalyser.fftSize = 256;
-      playbackDataArray = new Uint8Array(playbackAnalyser.frequencyBinCount);
-
-      src.connect(playbackAnalyser);
-      playbackAnalyser.connect(audioCtx.destination);
-
-      setState('speaking');
-      pollPlayback();
-      src.onended = () => { targetAmplitude = 0; setState('idle'); hideResponseText(); };
-      src.start();
-    }, err => {
-      console.error('Audio decode error', err);
-      setState('idle');
-    });
-  }
-
-  // ── Streaming audio chunk queue ─────────────────────────────
+  // ── Streaming Audio Context ────────────────────────────────────────
+  let streamingAudioCtx = null;
   let audioQueue = [];
-  let isPlayingQueue = false;
+  let isPlaying = false;
+  let nextStartTime = 0;
 
-  function queueAudioChunk(b64) {
-    audioQueue.push(b64);
-    if (!isPlayingQueue) playNextChunk();
+  async function initAudioContext() {
+    if (!streamingAudioCtx) {
+      streamingAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (streamingAudioCtx.state === 'suspended') {
+      await streamingAudioCtx.resume();
+    }
   }
 
-  function playNextChunk() {
-    if (audioQueue.length === 0) { isPlayingQueue = false; targetAmplitude = 0; setState('idle'); hideResponseText(); return; }
-    isPlayingQueue = true;
-    const b64 = audioQueue.shift();
-    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+  async function playAudioChunk(audioBytes) {
+    await initAudioContext();
+    
+    try {
+      const audioBuffer = await streamingAudioCtx.decodeAudioData(audioBytes.slice());
+      const source = streamingAudioCtx.createBufferSource();
+      source.buffer = audioBuffer;
 
-    audioCtx.decodeAudioData(bytes.buffer.slice(0), buffer => {
-      const src = audioCtx.createBufferSource();
-      src.buffer = buffer;
-      playbackAnalyser = audioCtx.createAnalyser();
+      // Create analyser for visualization
+      playbackAnalyser = streamingAudioCtx.createAnalyser();
       playbackAnalyser.fftSize = 256;
       playbackDataArray = new Uint8Array(playbackAnalyser.frequencyBinCount);
-      src.connect(playbackAnalyser);
-      playbackAnalyser.connect(audioCtx.destination);
-      setState('speaking');
-      pollPlayback();
-      src.onended = () => playNextChunk();
-      src.start();
-    }, err => { console.error('Chunk decode error', err); playNextChunk(); });
+
+      source.connect(playbackAnalyser);
+      playbackAnalyser.connect(streamingAudioCtx.destination);
+
+      // Schedule seamless playback
+      const currentTime = streamingAudioCtx.currentTime;
+      const startTime = Math.max(currentTime, nextStartTime);
+      source.start(startTime);
+      nextStartTime = startTime + audioBuffer.duration;
+
+      if (!isPlaying) {
+        isPlaying = true;
+        pollPlayback();
+      }
+
+      // Stop when done
+      source.onended = () => {
+        if (audioQueue.length === 0) {
+          setTimeout(() => {
+            if (audioQueue.length === 0) {
+              isPlaying = false;
+              targetAmplitude = 0;
+              setState('idle');
+              hideResponseText();
+            }
+          }, 100);
+        }
+      };
+
+    } catch (error) {
+      console.error('Audio playback error:', error);
+    }
   }
 
   function pollPlayback() {
-    if (state !== 'speaking') { targetAmplitude = 0; return; }
+    if (!isPlaying) {
+      targetAmplitude = 0;
+      return;
+    }
     requestAnimationFrame(pollPlayback);
     if (playbackAnalyser && playbackDataArray) {
       playbackAnalyser.getByteFrequencyData(playbackDataArray);
@@ -336,26 +296,138 @@ function startMain() {
     }
   }
 
-  // ── Mic recording with silence detection ─────────────────────
+  // ── WebSocket ───────────────────────────────────────────────────
+  function connectWS() {
+    ws = new WebSocket(WS_URL);
+    ws.onopen = () => { wsReady = true; connDot.classList.add('connected'); console.log('WS connected'); };
+    ws.onclose = () => { wsReady = false; connDot.classList.remove('connected'); setTimeout(connectWS, 3000); };
+    ws.onerror = () => { wsReady = false; connDot.classList.remove('connected'); };
+    ws.onmessage = handleMessage;
+  }
+
+  // ── Message Handling ────────────────────────────────────────────
+  function handleMessage(evt) {
+    const msg = JSON.parse(evt.data);
+    
+    switch (msg.type) {
+      case 'state':
+        setState(msg.state);
+        break;
+        
+      case 'transcript':
+        if (msg.role === 'user') showUserText(msg.text);
+        break;
+        
+      case 'streaming_start':
+        streamingIndicator.classList.add('active');
+        nextStartTime = 0; // Reset audio timing
+        audioQueue = [];
+        break;
+        
+      case 'text_chunk':
+        showResponseText(msg.text, true); // Append mode
+        break;
+        
+      case 'audio_chunk':
+        // Queue and play audio chunk
+        const audioBytes = Uint8Array.from(atob(msg.audio), c => c.charCodeAt(0));
+        audioQueue.push(audioBytes);
+        playAudioChunk(audioBytes.buffer.slice());
+        break;
+        
+      case 'response_complete':
+        showLatency(msg.first_audio_latency, msg.total_time);
+        break;
+        
+      case 'streaming_complete':
+        streamingIndicator.classList.remove('active');
+        break;
+        
+      case 'error':
+        showUserText(msg.message);
+        setState('idle');
+        break;
+        
+      case 'pong':
+        // Heartbeat response
+        break;
+    }
+  }
+
+  connectWS();
+
+  // ── Text Display ─────────────────────────────────────────────────
+  const responseTextEl = document.getElementById('response-text');
+  let fadeOutTimer = null;
+  let currentText = '';
+
+  function showUserText(text) {
+    transcriptEl.textContent = text;
+  }
+
+  function showResponseText(text, append = false) {
+    clearTimeout(fadeOutTimer);
+    
+    if (append) {
+      currentText += text;
+      responseTextEl.textContent = currentText;
+    } else {
+      currentText = text;
+      responseTextEl.textContent = text;
+    }
+    
+    responseTextEl.className = '';
+    void responseTextEl.offsetWidth; // Trigger reflow
+    responseTextEl.className = 'visible';
+  }
+
+  function hideResponseText() {
+    responseTextEl.className = 'visible fade-out';
+    fadeOutTimer = setTimeout(() => {
+      responseTextEl.className = '';
+      responseTextEl.textContent = '';
+      currentText = '';
+    }, 1000);
+  }
+
+  function showLatency(firstAudioLatency, totalTime) {
+    if (firstAudioLatency) {
+      latencyDisplay.innerHTML = `
+        🎯 ${(firstAudioLatency * 1000).toFixed(0)}ms to first audio<br>
+        ⏱️ ${(totalTime * 1000).toFixed(0)}ms total LLM
+      `;
+      latencyDisplay.classList.add('visible');
+      setTimeout(() => latencyDisplay.classList.remove('visible'), 3000);
+    }
+  }
+
+  // ── Mic Recording ──────────────────────────────────────────────
   let silenceTimer = null;
   let hasSpoken = false;
-  const SILENCE_THRESHOLD = 0.04; // amplitude below this = silence
-  const SILENCE_DURATION = 1500;  // ms of silence before auto-stop
-  const MAX_RECORD_TIME = 15000;  // max recording time ms
+  const SILENCE_THRESHOLD = 0.04;
+  const SILENCE_DURATION = 1500;
+  const MAX_RECORD_TIME = 15000;
   let maxRecordTimer = null;
 
   async function startRecording() {
-    if (audioCtx.state === 'suspended') await audioCtx.resume();
+    await initAudioContext();
     try {
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          sampleRate: 16000,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true
+        }
+      });
     } catch (e) {
       console.warn('Mic denied', e);
-      addMessage('system', 'microphone access denied');
+      showUserText('microphone access denied');
       return false;
     }
 
-    const src = audioCtx.createMediaStreamSource(micStream);
-    analyser = audioCtx.createAnalyser();
+    const src = streamingAudioCtx.createMediaStreamSource(micStream);
+    analyser = streamingAudioCtx.createAnalyser();
     analyser.fftSize = 256;
     dataArray = new Uint8Array(analyser.frequencyBinCount);
     src.connect(analyser);
@@ -364,14 +436,15 @@ function startMain() {
     hasSpoken = false;
     silenceTimer = null;
 
-    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
+      ? 'audio/webm;codecs=opus' : 'audio/webm';
     mediaRecorder = new MediaRecorder(micStream, { mimeType });
-    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
-    mediaRecorder.start(100); // collect data every 100ms
+    mediaRecorder.ondataavailable = e => {
+      if (e.data.size > 0) audioChunks.push(e.data);
+    };
+    mediaRecorder.start(100);
 
-    // Max recording safety
     maxRecordTimer = setTimeout(() => finishRecording(), MAX_RECORD_TIME);
-
     return true;
   }
 
@@ -384,7 +457,7 @@ function startMain() {
     if (b64 && wsReady) {
       ws.send(JSON.stringify({ type: 'audio', audio: b64 }));
     } else if (!wsReady) {
-      addMessage('system', 'not connected');
+      showUserText('not connected');
       setState('idle');
     }
   }
@@ -393,10 +466,12 @@ function startMain() {
     if (!mediaRecorder || mediaRecorder.state === 'inactive') return null;
     return new Promise(resolve => {
       mediaRecorder.onstop = async () => {
-        if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+        if (micStream) {
+          micStream.getTracks().forEach(t => t.stop());
+          micStream = null;
+        }
         const blob = new Blob(audioChunks, { type: 'audio/webm' });
         const buffer = await blob.arrayBuffer();
-        // Convert to base64
         const bytes = new Uint8Array(buffer);
         let binary = '';
         for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
@@ -407,7 +482,10 @@ function startMain() {
   }
 
   function pollMic() {
-    if (state !== 'listening') { targetAmplitude = 0; return; }
+    if (state !== 'listening') {
+      targetAmplitude = 0;
+      return;
+    }
     requestAnimationFrame(pollMic);
     if (analyser && dataArray) {
       analyser.getByteFrequencyData(dataArray);
@@ -416,23 +494,22 @@ function startMain() {
       const amp = (sum / dataArray.length) / 255;
       targetAmplitude = amp;
 
-      // Silence detection
       if (amp > SILENCE_THRESHOLD) {
         hasSpoken = true;
         clearTimeout(silenceTimer);
         silenceTimer = null;
       } else if (hasSpoken && !silenceTimer) {
-        // User was speaking and now went silent
         silenceTimer = setTimeout(() => finishRecording(), SILENCE_DURATION);
       }
     }
   }
 
-  // ── Circle visualizer ──────────────────────────────────────────
+  // ── Circle Visualizer ──────────────────────────────────────────
   function draw() {
     requestAnimationFrame(draw);
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = BG;
+    ctx.fillRect(0, 0, W, H);
 
     breathPhase += 0.015;
     amplitude += (targetAmplitude - amplitude) * 0.12;
@@ -471,33 +548,44 @@ function startMain() {
   }
   requestAnimationFrame(draw);
 
-  // ── State management ────────────────────────────────────────────
+  // ── State Management ────────────────────────────────────────────
   function setState(s) {
     state = s;
-    const labels = { idle: 'tap to talk', listening: 'listening', thinking: 'thinking', speaking: '' };
+    const labels = {
+      idle: 'tap to talk',
+      listening: 'listening',
+      thinking: 'thinking',
+      speaking: ''
+    };
     statusEl.textContent = labels[s] || s;
     statusEl.style.opacity = s === 'idle' ? '0.4' : '0.6';
+    
     if (s === 'listening') pollMic();
     if (s !== 'listening' && s !== 'speaking') targetAmplitude = 0;
+    
+    // Reset streaming state when going to idle
+    if (s === 'idle') {
+      currentText = '';
+      audioQueue = [];
+      isPlaying = false;
+      nextStartTime = 0;
+    }
   }
 
-  // ── Tap interaction ─────────────────────────────────────────────
+  // ── Tap Interaction ─────────────────────────────────────────────
   mainEl.addEventListener('click', async () => {
     if (state === 'speaking' || state === 'thinking') return;
 
-    // If already listening, force-stop and send
     if (state === 'listening') {
       finishRecording();
       return;
     }
 
-    // Start recording — silence detection will auto-stop
+    // Start recording
     hideResponseText();
     transcriptEl.textContent = '';
     const ok = await startRecording();
-    if (ok) {
-      setState('listening');
-    }
+    if (ok) setState('listening');
   });
 }
 
