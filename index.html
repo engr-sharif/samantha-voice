@@ -213,9 +213,9 @@ function connect(wsUrl) {
 
     if (msg.type === 'status') {
       if (msg.text === 'thinking') { go('thinking'); }
-      else if (msg.text === 'speaking') { go('speaking'); }
+      else if (msg.text === 'speaking') { /* let audio playback handle state */ }
       else if (msg.text === 'idle') {
-        if (state !== 'speaking') go('idle');
+        if (!isPlaying) go('idle');
       }
     }
     else if (msg.type === 'user_text') {
@@ -239,7 +239,7 @@ function connect(wsUrl) {
 function go(s) {
   state = s;
   orb.className = '';
-  if (s === 'idle')      { orb.classList.add('breathing'); label.textContent = 'tap to talk'; }
+  if (s === 'idle')      { orb.classList.add('breathing'); label.textContent = micActive ? 'listening' : 'tap to start'; }
   if (s === 'listening') { orb.classList.add('waving');    label.textContent = 'listening'; }
   if (s === 'thinking')  { orb.classList.add('pulsing');   label.textContent = 'thinking'; }
   if (s === 'speaking')  { orb.classList.add('pulsing');   label.textContent = ''; }
@@ -321,93 +321,160 @@ function playWithContext(b64) {
   }, () => playNext());
 }
 
-// ── Recording ──────────────────────────────────────────────
-async function startRec() {
+// ── Always-on mic + VAD ────────────────────────────────────
+let micActive = false;
+let recording = false;
+let recChunks = [];
+let speechStart = 0;
+let silenceStart = 0;
+const SILENCE_THRESHOLD = 0.03;   // amplitude below this = silence
+const SPEECH_THRESHOLD = 0.045;   // amplitude above this = speech
+const SILENCE_DURATION = 1200;    // ms of silence to end utterance
+const MIN_SPEECH_MS = 300;        // minimum speech duration to send
+const MAX_SPEECH_MS = 15000;      // max recording length
+
+async function startMic() {
+  if (micActive) return;
   initAudio();
   try {
     micStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true }
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
-  } catch(e) { console.log('mic denied'); return false; }
+  } catch(e) { console.log('mic denied'); return; }
 
   const src = audioCtx.createMediaStreamSource(micStream);
   analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 256;
+  analyser.fftSize = 512;
+  analyser.smoothingTimeConstant = 0.85;
   micData = new Uint8Array(analyser.frequencyBinCount);
   src.connect(analyser);
-  hasSpoken = false;
-  silenceTimer = null;
-  detectSilence();
-
-  const chunks = [];
-  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
-  recorder = new MediaRecorder(micStream, { mimeType: mime });
-  recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
-  recorder.start(100);
-
-  maxTimer = setTimeout(finish, 15000);
-
-  async function finish() {
-    if (state !== 'listening') return;
-    clearTimeout(maxTimer);
-    clearTimeout(silenceTimer);
-    go('thinking');
-
-    const b64 = await new Promise(resolve => {
-      recorder.onstop = async () => {
-        micStream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        const buf = await blob.arrayBuffer();
-        const bytes = new Uint8Array(buf);
-        let bin = '';
-        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-        resolve(btoa(bin));
-      };
-      recorder.stop();
-    });
-
-    if (b64 && ws && ws.readyState === 1) {
-      ws.send(JSON.stringify({ type: 'audio', audio: b64 }));
-    } else {
-      go('idle');
-    }
-  }
-
-  window._finish = finish;
-  return true;
+  micActive = true;
+  recording = false;
+  vadLoop();
+  console.log('Mic always-on');
 }
 
-function detectSilence() {
-  if (state !== 'listening') return;
-  requestAnimationFrame(detectSilence);
+function getAmplitude() {
   analyser.getByteFrequencyData(micData);
   let sum = 0;
   for (let i = 0; i < micData.length; i++) sum += micData[i];
-  const amp = sum / micData.length / 255;
-  if (amp > 0.04) { hasSpoken = true; clearTimeout(silenceTimer); silenceTimer = null; }
-  else if (hasSpoken && !silenceTimer) {
-    silenceTimer = setTimeout(() => window._finish && window._finish(), 1500);
+  return sum / micData.length / 255;
+}
+
+function vadLoop() {
+  if (!micActive) return;
+  requestAnimationFrame(vadLoop);
+
+  const amp = getAmplitude();
+  const now = Date.now();
+
+  // If we're in thinking/speaking state, don't process VAD
+  // BUT if user speaks during playback, interrupt!
+  if (state === 'speaking' && amp > SPEECH_THRESHOLD * 1.5) {
+    // User is interrupting — stop playback, start listening
+    audioQueue = [];
+    isPlaying = false;
+    if (audioEl) { audioEl.pause(); audioEl.src = ''; }
+    go('listening');
+    beginRecording();
+    return;
+  }
+
+  if (state === 'thinking') return;
+
+  if (!recording && amp > SPEECH_THRESHOLD) {
+    // Speech detected — start recording
+    beginRecording();
+    go('listening');
+  }
+
+  if (recording) {
+    if (amp > SILENCE_THRESHOLD) {
+      silenceStart = 0; // reset silence counter
+    } else {
+      if (!silenceStart) silenceStart = now;
+      const silenceMs = now - silenceStart;
+      const speechMs = now - speechStart;
+
+      if (silenceMs >= SILENCE_DURATION && speechMs >= MIN_SPEECH_MS) {
+        finishRecording();
+      }
+    }
+
+    // Max length guard
+    if (now - speechStart >= MAX_SPEECH_MS) {
+      finishRecording();
+    }
+  }
+}
+
+function beginRecording() {
+  if (recording) return;
+  recChunks = [];
+  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+  recorder = new MediaRecorder(micStream, { mimeType: mime });
+  recorder.ondataavailable = e => { if (e.data.size) recChunks.push(e.data); };
+  recorder.start(100);
+  recording = true;
+  speechStart = Date.now();
+  silenceStart = 0;
+  console.log('Recording started');
+}
+
+async function finishRecording() {
+  if (!recording) return;
+  recording = false;
+  silenceStart = 0;
+  go('thinking');
+
+  const b64 = await new Promise(resolve => {
+    recorder.onstop = async () => {
+      const blob = new Blob(recChunks, { type: 'audio/webm' });
+      const buf = await blob.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let bin = '';
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      resolve(btoa(bin));
+    };
+    recorder.stop();
+  });
+
+  if (b64 && ws && ws.readyState === 1) {
+    reply.classList.remove('show');
+    reply.textContent = '';
+    audioQueue = [];
+    isPlaying = false;
+    ws.send(JSON.stringify({ type: 'audio', audio: b64 }));
+    console.log('Sent ' + Math.round(b64.length/1024) + 'KB');
+  } else {
+    go('idle');
   }
 }
 
 // ── Tap handler ────────────────────────────────────────────
+// First tap activates always-on mic. After that, tap to interrupt or force-send.
 orb.addEventListener('click', async () => {
+  if (!micActive) {
+    // First tap — activate mic
+    await startMic();
+    go('idle');
+    label.textContent = 'listening';
+    return;
+  }
   if (state === 'thinking') return;
   if (state === 'speaking') {
+    // Interrupt playback
     audioQueue = [];
     isPlaying = false;
+    if (audioEl) { audioEl.pause(); audioEl.src = ''; }
     go('idle');
     return;
   }
-  if (state === 'listening') {
-    if (window._finish) window._finish();
+  if (state === 'listening' && recording) {
+    // Force end recording
+    finishRecording();
     return;
   }
-  reply.classList.remove('show');
-  reply.textContent = '';
-  audioQueue = [];
-  isPlaying = false;
-  if (await startRec()) go('listening');
 });
 
 // Keepalive
