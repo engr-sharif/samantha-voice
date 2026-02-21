@@ -116,10 +116,14 @@ $('keypad').addEventListener('click', e => {
     if (pinBuf === PIN) {
       setTimeout(() => {
         $('pin-screen').classList.add('hidden');
-        // Check if we have a saved URL
-        const saved = localStorage.getItem(LS_KEY);
-        if (saved) { startApp(saved); }
-        else { $('setup-screen').classList.remove('hidden'); }
+        // If served from backend (not GitHub Pages), auto-connect
+        if (!location.hostname.includes('github.io')) {
+          startApp(autoWsUrl());
+        } else {
+          const saved = localStorage.getItem(LS_KEY);
+          if (saved) { startApp(saved); }
+          else { $('setup-screen').classList.remove('hidden'); }
+        }
       }, 200);
     } else {
       $('pin-error').textContent = 'wrong pin';
@@ -131,6 +135,12 @@ $('keypad').addEventListener('click', e => {
 });
 
 // ── Setup ──────────────────────────────────────────────────
+// Auto-detect: if served from the backend itself, use same-origin WS
+function autoWsUrl() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return proto + '//' + location.host + '/ws';
+}
+
 $('connect-btn').addEventListener('click', () => {
   let url = $('ws-url').value.trim();
   if (!url) return;
