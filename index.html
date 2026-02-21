@@ -256,7 +256,20 @@ function hideReply() {
 }
 
 // ── Audio playback ─────────────────────────────────────────
+// Use an Audio element for iOS compatibility (avoids AudioContext autoplay issues)
+let audioEl = null;
+
 function initAudio() {
+  if (!audioEl) {
+    audioEl = new Audio();
+    audioEl.playsInline = true;
+    // Unlock audio on first user tap
+    document.addEventListener('touchstart', () => {
+      if (audioEl) { audioEl.play().catch(()=>{}); audioEl.pause(); }
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    }, { once: true });
+  }
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
@@ -278,6 +291,23 @@ function playNext() {
   initAudio();
 
   const b64 = audioQueue.shift();
+
+  // Try Audio element first (better iOS support)
+  try {
+    const dataUrl = 'data:audio/wav;base64,' + b64;
+    audioEl.src = dataUrl;
+    audioEl.onended = () => playNext();
+    audioEl.onerror = () => {
+      console.log('Audio element failed, trying AudioContext');
+      playWithContext(b64);
+    };
+    audioEl.play().catch(() => playWithContext(b64));
+  } catch(e) {
+    playWithContext(b64);
+  }
+}
+
+function playWithContext(b64) {
   const raw = atob(b64);
   const arr = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
