@@ -6,18 +6,17 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#FF4F38">
-<meta name="mobile-web-app-capable" content="yes">
 <title>Samantha</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;background:#FF4F38;color:rgba(0,0,0,0.7);touch-action:manipulation}
 body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 
-#pin-screen,#boot-screen,#main-screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
-#pin-screen{z-index:30}
-#boot-screen{z-index:20;opacity:0;pointer-events:none}
-#main-screen{z-index:10;opacity:0;pointer-events:none}
+.screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .4s}
+.hidden{opacity:0;pointer-events:none}
 
+/* PIN Screen */
+#pin-screen{z-index:30}
 .pin-dots{display:flex;gap:18px;margin-bottom:48px}
 .pin-dot{width:16px;height:16px;border-radius:50%;border:2px solid rgba(0,0,0,0.5);transition:background .15s}
 .pin-dot.filled{background:rgba(0,0,0,0.8);border-color:rgba(0,0,0,0.8)}
@@ -28,21 +27,42 @@ body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-i
 .key.del{border:none;font-size:16px;letter-spacing:1px}
 .pin-error{color:rgba(0,0,0,0.6);font-size:13px;height:20px;margin-bottom:24px;letter-spacing:1px}
 
-#boot-canvas{width:100%;height:100%}
+/* Setup Screen */
+#setup-screen{z-index:25}
+.setup-box{width:min(340px,85vw);text-align:center}
+.setup-box h2{font-size:18px;font-weight:500;margin-bottom:8px;color:rgba(0,0,0,0.8)}
+.setup-box p{font-size:13px;color:rgba(0,0,0,0.5);margin-bottom:24px;line-height:1.5}
+.setup-input{width:100%;padding:14px 16px;border-radius:12px;border:1.5px solid rgba(0,0,0,0.2);background:rgba(255,255,255,0.15);color:rgba(0,0,0,0.8);font-size:15px;outline:none;text-align:center;font-family:monospace}
+.setup-input::placeholder{color:rgba(0,0,0,0.3)}
+.setup-input:focus{border-color:rgba(0,0,0,0.5);background:rgba(255,255,255,0.25)}
+.setup-btn{margin-top:20px;padding:14px 40px;border-radius:30px;border:1.5px solid rgba(0,0,0,0.5);background:transparent;color:rgba(0,0,0,0.8);font-size:15px;cursor:pointer;transition:all .15s}
+.setup-btn:active{background:rgba(0,0,0,0.1);transform:scale(0.97)}
+.setup-hint{margin-top:16px;font-size:11px;color:rgba(0,0,0,0.3)}
 
-#viz-canvas{position:absolute;inset:0;width:100%;height:100%}
-#status{position:absolute;bottom:calc(60px + env(safe-area-inset-bottom));left:0;right:0;text-align:center;font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:0.5;transition:opacity .3s}
-#transcript{position:absolute;bottom:calc(20px + env(safe-area-inset-bottom));left:20px;right:20px;text-align:center;font-size:13px;color:rgba(0,0,0,0.35);max-height:40px;overflow:hidden;line-height:1.5}
-#response-text{position:absolute;left:24px;right:24px;top:50%;transform:translateY(40px);text-align:center;font-size:17px;font-weight:300;color:white;line-height:1.6;letter-spacing:0.3px;opacity:0;transition:opacity 0.8s ease,transform 0.8s ease;pointer-events:none}
-#response-text.visible{opacity:1;transform:translateY(50px)}
-#response-text.fade-out{opacity:0;transform:translateY(60px)}
-#conn-dot{position:absolute;top:calc(12px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));width:8px;height:8px;border-radius:50%;background:rgba(0,0,0,0.2);transition:background .3s}
-#conn-dot.connected{background:#1a1a1a}
+/* Main Screen */
+#main-screen{z-index:10}
+#orb{width:140px;height:140px;border-radius:50%;border:2px solid rgba(0,0,0,0.6);cursor:pointer;transition:transform .2s}
+#orb:active{transform:scale(0.95)}
+.breathing{animation:breathe 3s ease-in-out infinite}
+.pulsing{animation:pulse .8s ease-in-out infinite}
+.waving{animation:wave 1.5s ease-in-out infinite}
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.1)}}
+@keyframes wave{0%,100%{transform:scale(1);border-color:rgba(0,0,0,0.6)}50%{transform:scale(1.06);border-color:rgba(0,0,0,0.9)}}
+
+#label{font-size:13px;letter-spacing:2px;text-transform:uppercase;color:rgba(0,0,0,0.45);margin-top:24px}
+#reply{position:absolute;bottom:60px;left:20px;right:20px;text-align:center;font-size:15px;color:rgba(255,255,255,0.85);line-height:1.6;opacity:0;transition:opacity .5s;max-height:120px;overflow-y:auto}
+#reply.show{opacity:1}
+#conn{position:absolute;top:14px;right:14px;width:8px;height:8px;border-radius:50%;background:rgba(0,0,0,0.15)}
+#conn.on{background:#222}
+#settings-btn{position:absolute;top:10px;left:14px;background:none;border:none;color:rgba(0,0,0,0.25);font-size:20px;cursor:pointer;padding:4px}
+#settings-btn:hover{color:rgba(0,0,0,0.5)}
 </style>
 </head>
 <body>
 
-<div id="pin-screen">
+<!-- PIN Screen -->
+<div id="pin-screen" class="screen">
   <div class="pin-error" id="pin-error"></div>
   <div class="pin-dots" id="pin-dots">
     <div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div>
@@ -55,453 +75,305 @@ body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-i
   </div>
 </div>
 
-<div id="boot-screen"><canvas id="boot-canvas"></canvas></div>
-
-<div id="main-screen">
-  <canvas id="viz-canvas"></canvas>
-  <div id="conn-dot"></div>
-  <div id="response-text"></div>
-  <div id="status">tap to talk</div>
-  <div id="transcript"></div>
+<!-- Setup Screen -->
+<div id="setup-screen" class="screen hidden">
+  <div class="setup-box">
+    <h2>Backend Server</h2>
+    <p>Enter the WebSocket URL of your Samantha server running at home.</p>
+    <input class="setup-input" id="ws-url" type="url" placeholder="ws://192.168.1.x:8765" autocomplete="off" spellcheck="false">
+    <br>
+    <button class="setup-btn" id="connect-btn">Connect</button>
+    <div class="setup-hint" id="setup-status"></div>
+  </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- Main Screen -->
+<div id="main-screen" class="screen hidden">
+  <div id="conn"></div>
+  <button id="settings-btn">⚙</button>
+  <div id="orb" class="breathing"></div>
+  <div id="label">tap to talk</div>
+  <div id="reply"></div>
+</div>
+
 <script>
-(function(){
-'use strict';
+const $ = id => document.getElementById(id);
+const PIN = '0913';
+const LS_KEY = 'samantha_ws_url';
 
-const PIN_CODE = '0913';
-const BG = '#FF4F38';
+// ── PIN ────────────────────────────────────────────────────
+let pinBuf = '';
+const dots = $('pin-dots').children;
 
-// ── Backend config ──────────────────────────────────────────────────
-// Auto-detect: if served from the backend, use relative WS; otherwise use Tailscale
-const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.port === '8765';
-const IS_TAILSCALE = location.hostname.includes('tail');
-const WS_URL = (IS_LOCAL || IS_TAILSCALE)
-  ? `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`
-  : 'wss://desktop-sv160n9.tail4e682f.ts.net:8765/ws';
-
-let ws = null;
-let wsReady = false;
-
-// ── PIN ─────────────────────────────────────────────────────────────
-let pinEntry = '';
-const dots = document.querySelectorAll('.pin-dot');
-const pinError = document.getElementById('pin-error');
-const ss = document.createElement('style');
-ss.textContent = '@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-12px)}75%{transform:translateX(12px)}}';
-document.head.appendChild(ss);
-
-document.getElementById('keypad').addEventListener('click', e => {
+$('keypad').addEventListener('click', e => {
   const k = e.target.closest('.key');
   if (!k) return;
   const n = k.dataset.n;
-  if (n === 'del') { pinEntry = pinEntry.slice(0,-1); updateDots(); return; }
-  if (pinEntry.length >= 4) return;
-  pinEntry += n;
-  updateDots();
-  if (pinEntry.length === 4) {
-    if (pinEntry === PIN_CODE) {
-      setTimeout(startBoot, 200);
+  if (n === 'del') { pinBuf = pinBuf.slice(0,-1); }
+  else if (pinBuf.length < 4) { pinBuf += n; }
+  [...dots].forEach((d,i) => d.classList.toggle('filled', i < pinBuf.length));
+  if (pinBuf.length === 4) {
+    if (pinBuf === PIN) {
+      setTimeout(() => {
+        $('pin-screen').classList.add('hidden');
+        // Check if we have a saved URL
+        const saved = localStorage.getItem(LS_KEY);
+        if (saved) { startApp(saved); }
+        else { $('setup-screen').classList.remove('hidden'); }
+      }, 200);
     } else {
-      pinError.textContent = 'incorrect';
-      document.getElementById('pin-dots').style.animation = 'shake .4s';
-      setTimeout(() => { pinEntry = ''; updateDots(); pinError.textContent = ''; document.getElementById('pin-dots').style.animation = ''; }, 600);
+      $('pin-error').textContent = 'wrong pin';
+      pinBuf = '';
+      [...dots].forEach(d => d.classList.remove('filled'));
+      setTimeout(() => $('pin-error').textContent = '', 1500);
     }
   }
 });
-function updateDots() { dots.forEach((d,i) => d.classList.toggle('filled', i < pinEntry.length)); }
 
-// ── BOOT ────────────────────────────────────────────────────────────
-function startBoot() {
-  const pinEl = document.getElementById('pin-screen');
-  pinEl.style.opacity = '0'; pinEl.style.transition = 'opacity .4s';
-  setTimeout(() => pinEl.style.display = 'none', 400);
+// ── Setup ──────────────────────────────────────────────────
+$('connect-btn').addEventListener('click', () => {
+  let url = $('ws-url').value.trim();
+  if (!url) return;
+  // Normalize: ensure ws:// or wss://
+  if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
+    url = 'ws://' + url;
+  }
+  // Add /ws if not present
+  if (!url.endsWith('/ws')) {
+    url = url.replace(/\/$/, '') + '/ws';
+  }
+  $('setup-status').textContent = 'connecting...';
+  testAndSave(url);
+});
 
-  const bootEl = document.getElementById('boot-screen');
-  bootEl.style.opacity = '1'; bootEl.style.pointerEvents = 'auto';
+function testAndSave(url) {
+  const test = new WebSocket(url);
+  const timer = setTimeout(() => { test.close(); $('setup-status').textContent = 'timeout — check URL'; }, 5000);
+  test.onopen = () => {
+    clearTimeout(timer);
+    test.close();
+    localStorage.setItem(LS_KEY, url);
+    $('setup-screen').classList.add('hidden');
+    startApp(url);
+  };
+  test.onerror = () => {
+    clearTimeout(timer);
+    $('setup-status').textContent = 'failed — check URL and server';
+  };
+}
 
-  const canvas = document.getElementById('boot-canvas');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-  renderer.setClearColor(new THREE.Color(BG));
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(window.innerWidth, window.innerHeight);
+// ── Settings gear ──────────────────────────────────────────
+$('settings-btn').addEventListener('click', () => {
+  $('main-screen').classList.add('hidden');
+  $('ws-url').value = localStorage.getItem(LS_KEY) || '';
+  $('setup-status').textContent = '';
+  $('setup-screen').classList.remove('hidden');
+});
 
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
-  camera.position.z = 80;
+// ── Main App ───────────────────────────────────────────────
+let ws, state = 'idle';
+let audioCtx, recorder, micStream, analyser, micData;
+let audioQueue = [], isPlaying = false;
+let silenceTimer, hasSpoken, maxTimer;
+let replyFadeTimer;
+const orb = $('orb'), label = $('label'), reply = $('reply'), conn = $('conn');
 
-  const pi2 = Math.PI * 2, length = 30, radius = 5.6;
-  const curve = new THREE.Curve();
-  curve.getPoint = function(p) {
-    var x = length * Math.sin(pi2*p), y = radius * Math.cos(pi2*3*p), z, t;
-    t = p%0.25/0.25; t = p%0.25 - (2*(1-t)*t*-0.0185 + t*t*0.25);
-    if (Math.floor(p/0.25)==0 || Math.floor(p/0.25)==2) t *= -1;
-    z = radius * Math.sin(pi2*2*(p-t));
-    return new THREE.Vector3(x, y, z);
+function startApp(wsUrl) {
+  $('main-screen').classList.remove('hidden');
+  connect(wsUrl);
+}
+
+function connect(wsUrl) {
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    conn.classList.add('on');
+    console.log('Connected to', wsUrl);
   };
 
-  const geo = new THREE.TubeGeometry(curve, 200, 1.1, 2, true);
-  const mat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-  const mesh = new THREE.Mesh(geo, mat);
-  const group = new THREE.Group();
-  group.add(mesh); scene.add(group);
+  ws.onclose = () => {
+    conn.classList.remove('on');
+    setTimeout(() => connect(wsUrl), 3000);
+  };
 
-  let startTime = performance.now(), transitionStarted = false, bootDone = false;
-  function easeInOut(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
+  ws.onerror = () => console.log('WS error');
 
-  function animateBoot() {
-    if (bootDone) return;
-    requestAnimationFrame(animateBoot);
-    const elapsed = (performance.now() - startTime) / 1000;
-    if (!transitionStarted) {
-      mesh.rotation.x += 0.035;
-      if (elapsed > 2.8) { transitionStarted = true; startTime = performance.now(); }
-    } else {
-      const dur = 1.8, t = Math.min((performance.now()-startTime)/1000/dur, 1), e = easeInOut(t);
-      group.rotation.y = -e * Math.PI/2;
-      group.position.z = e * 40;
-      mat.opacity = 1 - t*t; mat.transparent = true;
-      if (t >= 1) {
-        bootDone = true;
-        bootEl.style.transition = 'opacity .6s'; bootEl.style.opacity = '0';
-        setTimeout(() => { bootEl.style.display = 'none'; renderer.dispose(); startMain(); }, 600);
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+
+    if (msg.type === 'status') {
+      if (msg.text === 'thinking') { go('thinking'); }
+      else if (msg.text === 'speaking') { go('speaking'); }
+      else if (msg.text === 'idle') {
+        if (state !== 'speaking') go('idle');
       }
     }
-    renderer.render(scene, camera);
-  }
-  animateBoot();
+    else if (msg.type === 'user_text') {
+      label.textContent = '"' + msg.text + '"';
+    }
+    else if (msg.type === 'audio') {
+      showReply(msg.text);
+      queuePlay(msg.data);
+    }
+    else if (msg.type === 'done') {
+      showReply(msg.text);
+    }
+    else if (msg.type === 'error') {
+      label.textContent = 'error';
+      go('idle');
+    }
+    else if (msg.type === 'pong') { /* keepalive */ }
+  };
 }
 
-// ── MAIN ────────────────────────────────────────────────────────────
-function startMain() {
-  const mainEl = document.getElementById('main-screen');
-  mainEl.style.opacity = '1'; mainEl.style.pointerEvents = 'auto'; mainEl.style.transition = 'opacity .8s';
+function go(s) {
+  state = s;
+  orb.className = '';
+  if (s === 'idle')      { orb.classList.add('breathing'); label.textContent = 'tap to talk'; }
+  if (s === 'listening') { orb.classList.add('waving');    label.textContent = 'listening'; }
+  if (s === 'thinking')  { orb.classList.add('pulsing');   label.textContent = 'thinking'; }
+  if (s === 'speaking')  { orb.classList.add('pulsing');   label.textContent = ''; }
+}
 
-  const canvas = document.getElementById('viz-canvas');
-  const ctx = canvas.getContext('2d');
-  const statusEl = document.getElementById('status');
-  const transcriptEl = document.getElementById('transcript');
-  const connDot = document.getElementById('conn-dot');
-  let W, H;
+function showReply(text) {
+  clearTimeout(replyFadeTimer);
+  reply.textContent = text;
+  reply.classList.add('show');
+}
 
-  // ── Early audio unlock (mobile requires user gesture) ───────
-  // Create AudioContext immediately (we're inside a user-gesture chain from PIN entry)
-  const audioCtxEarly = new (window.AudioContext || window.webkitAudioContext)();
-  // Play a silent buffer to unlock audio output on iOS/Android
-  const silentBuf = audioCtxEarly.createBuffer(1, 1, 22050);
-  const silentSrc = audioCtxEarly.createBufferSource();
-  silentSrc.buffer = silentBuf;
-  silentSrc.connect(audioCtxEarly.destination);
-  silentSrc.start();
+function hideReply() {
+  replyFadeTimer = setTimeout(() => reply.classList.remove('show'), 5000);
+}
 
-  // Request mic permissions immediately after boot
-  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-    stream.getTracks().forEach(t => t.stop()); // release immediately, just wanted the permission
-    console.log('Mic permission granted');
-  }).catch(e => console.warn('Mic permission denied', e));
+// ── Audio playback ─────────────────────────────────────────
+function initAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
 
-  function resize() {
-    W = canvas.width = window.innerWidth * devicePixelRatio;
-    H = canvas.height = window.innerHeight * devicePixelRatio;
-    canvas.style.width = window.innerWidth + 'px';
-    canvas.style.height = window.innerHeight + 'px';
+function queuePlay(b64) {
+  audioQueue.push(b64);
+  if (!isPlaying) playNext();
+}
+
+function playNext() {
+  if (!audioQueue.length) {
+    isPlaying = false;
+    go('idle');
+    hideReply();
+    return;
   }
-  resize();
-  window.addEventListener('resize', resize);
+  isPlaying = true;
+  go('speaking');
+  initAudio();
 
-  // State
-  let state = 'idle';
-  let amplitude = 0, targetAmplitude = 0, breathPhase = 0;
-  let audioCtx = audioCtxEarly, analyser, dataArray, micStream;
-  let mediaRecorder, audioChunks = [];
-  let messages = []; // transcript history
-  let playbackAnalyser, playbackDataArray;
+  const b64 = audioQueue.shift();
+  const raw = atob(b64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
 
-  // ── WebSocket ───────────────────────────────────────────────────
-  function connectWS() {
-    ws = new WebSocket(WS_URL);
-    ws.onopen = () => { wsReady = true; connDot.classList.add('connected'); console.log('WS connected'); };
-    ws.onclose = () => { wsReady = false; connDot.classList.remove('connected'); setTimeout(connectWS, 3000); };
-    ws.onerror = () => { wsReady = false; connDot.classList.remove('connected'); };
-    ws.onmessage = (evt) => {
-      const msg = JSON.parse(evt.data);
-      if (msg.type === 'state') setState(msg.state);
-      else if (msg.type === 'transcript') {
-        if (msg.role === 'user') showUserText(msg.text);
-        else if (msg.role === 'assistant') showResponseText(msg.text);
-      }
-      else if (msg.type === 'text_chunk') showResponseText((responseTextEl.textContent || '') + ' ' + msg.text);
-      else if (msg.type === 'audio_chunk') queueAudioChunk(msg.audio);
-      else if (msg.type === 'response_complete') { /* all chunks sent */ }
-      else if (msg.type === 'response') { showResponseText(msg.text); playAudio(msg.audio); }
-      else if (msg.type === 'audio') playAudio(msg.audio);
-      else if (msg.type === 'error') { showUserText(msg.message); setState('idle'); }
-    };
-  }
-  connectWS();
+  audioCtx.decodeAudioData(arr.buffer.slice(0), buf => {
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(audioCtx.destination);
+    src.onended = playNext;
+    src.start();
+  }, () => playNext());
+}
 
-  // ── Text display ─────────────────────────────────────────────────
-  const responseTextEl = document.getElementById('response-text');
-  let fadeOutTimer = null;
-
-  function showUserText(text) {
-    transcriptEl.textContent = text;
-  }
-
-  function showResponseText(text) {
-    // Clear any pending fade-out
-    clearTimeout(fadeOutTimer);
-    responseTextEl.textContent = text;
-    responseTextEl.className = '';
-    // Trigger reflow then fade in
-    void responseTextEl.offsetWidth;
-    responseTextEl.className = 'visible';
-  }
-
-  function hideResponseText() {
-    responseTextEl.className = 'visible fade-out';
-    fadeOutTimer = setTimeout(() => {
-      responseTextEl.className = '';
-      responseTextEl.textContent = '';
-    }, 1000);
-  }
-
-  // ── Audio playback with visualization ───────────────────────────
-  function playAudio(b64) {
-    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-
-    audioCtx.decodeAudioData(bytes.buffer.slice(0), buffer => {
-      const src = audioCtx.createBufferSource();
-      src.buffer = buffer;
-
-      // Analyser for speaking visualization
-      playbackAnalyser = audioCtx.createAnalyser();
-      playbackAnalyser.fftSize = 256;
-      playbackDataArray = new Uint8Array(playbackAnalyser.frequencyBinCount);
-
-      src.connect(playbackAnalyser);
-      playbackAnalyser.connect(audioCtx.destination);
-
-      setState('speaking');
-      pollPlayback();
-      src.onended = () => { targetAmplitude = 0; setState('idle'); hideResponseText(); };
-      src.start();
-    }, err => {
-      console.error('Audio decode error', err);
-      setState('idle');
+// ── Recording ──────────────────────────────────────────────
+async function startRec() {
+  initAudio();
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true }
     });
-  }
+  } catch(e) { console.log('mic denied'); return false; }
 
-  // ── Streaming audio chunk queue ─────────────────────────────
-  let audioQueue = [];
-  let isPlayingQueue = false;
+  const src = audioCtx.createMediaStreamSource(micStream);
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 256;
+  micData = new Uint8Array(analyser.frequencyBinCount);
+  src.connect(analyser);
+  hasSpoken = false;
+  silenceTimer = null;
+  detectSilence();
 
-  function queueAudioChunk(b64) {
-    audioQueue.push(b64);
-    if (!isPlayingQueue) playNextChunk();
-  }
+  const chunks = [];
+  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
+  recorder = new MediaRecorder(micStream, { mimeType: mime });
+  recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+  recorder.start(100);
 
-  function playNextChunk() {
-    if (audioQueue.length === 0) { isPlayingQueue = false; targetAmplitude = 0; setState('idle'); hideResponseText(); return; }
-    isPlayingQueue = true;
-    const b64 = audioQueue.shift();
-    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+  maxTimer = setTimeout(finish, 15000);
 
-    audioCtx.decodeAudioData(bytes.buffer.slice(0), buffer => {
-      const src = audioCtx.createBufferSource();
-      src.buffer = buffer;
-      playbackAnalyser = audioCtx.createAnalyser();
-      playbackAnalyser.fftSize = 256;
-      playbackDataArray = new Uint8Array(playbackAnalyser.frequencyBinCount);
-      src.connect(playbackAnalyser);
-      playbackAnalyser.connect(audioCtx.destination);
-      setState('speaking');
-      pollPlayback();
-      src.onended = () => playNextChunk();
-      src.start();
-    }, err => { console.error('Chunk decode error', err); playNextChunk(); });
-  }
-
-  function pollPlayback() {
-    if (state !== 'speaking') { targetAmplitude = 0; return; }
-    requestAnimationFrame(pollPlayback);
-    if (playbackAnalyser && playbackDataArray) {
-      playbackAnalyser.getByteFrequencyData(playbackDataArray);
-      let sum = 0;
-      for (let i = 0; i < playbackDataArray.length; i++) sum += playbackDataArray[i];
-      targetAmplitude = (sum / playbackDataArray.length) / 255;
-    }
-  }
-
-  // ── Mic recording with silence detection ─────────────────────
-  let silenceTimer = null;
-  let hasSpoken = false;
-  const SILENCE_THRESHOLD = 0.04; // amplitude below this = silence
-  const SILENCE_DURATION = 1500;  // ms of silence before auto-stop
-  const MAX_RECORD_TIME = 15000;  // max recording time ms
-  let maxRecordTimer = null;
-
-  async function startRecording() {
-    if (audioCtx.state === 'suspended') await audioCtx.resume();
-    try {
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true } });
-    } catch (e) {
-      console.warn('Mic denied', e);
-      addMessage('system', 'microphone access denied');
-      return false;
-    }
-
-    const src = audioCtx.createMediaStreamSource(micStream);
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 256;
-    dataArray = new Uint8Array(analyser.frequencyBinCount);
-    src.connect(analyser);
-
-    audioChunks = [];
-    hasSpoken = false;
-    silenceTimer = null;
-
-    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
-    mediaRecorder = new MediaRecorder(micStream, { mimeType });
-    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
-    mediaRecorder.start(100); // collect data every 100ms
-
-    // Max recording safety
-    maxRecordTimer = setTimeout(() => finishRecording(), MAX_RECORD_TIME);
-
-    return true;
-  }
-
-  async function finishRecording() {
+  async function finish() {
     if (state !== 'listening') return;
-    clearTimeout(maxRecordTimer);
+    clearTimeout(maxTimer);
     clearTimeout(silenceTimer);
-    setState('thinking');
-    const b64 = await stopRecording();
-    if (b64 && wsReady) {
-      ws.send(JSON.stringify({ type: 'audio', audio: b64 }));
-    } else if (!wsReady) {
-      addMessage('system', 'not connected');
-      setState('idle');
-    }
-  }
+    go('thinking');
 
-  async function stopRecording() {
-    if (!mediaRecorder || mediaRecorder.state === 'inactive') return null;
-    return new Promise(resolve => {
-      mediaRecorder.onstop = async () => {
-        if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
-        const blob = new Blob(audioChunks, { type: 'audio/webm' });
-        const buffer = await blob.arrayBuffer();
-        // Convert to base64
-        const bytes = new Uint8Array(buffer);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-        resolve(btoa(binary));
+    const b64 = await new Promise(resolve => {
+      recorder.onstop = async () => {
+        micStream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const buf = await blob.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let bin = '';
+        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        resolve(btoa(bin));
       };
-      mediaRecorder.stop();
+      recorder.stop();
     });
-  }
 
-  function pollMic() {
-    if (state !== 'listening') { targetAmplitude = 0; return; }
-    requestAnimationFrame(pollMic);
-    if (analyser && dataArray) {
-      analyser.getByteFrequencyData(dataArray);
-      let sum = 0;
-      for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-      const amp = (sum / dataArray.length) / 255;
-      targetAmplitude = amp;
-
-      // Silence detection
-      if (amp > SILENCE_THRESHOLD) {
-        hasSpoken = true;
-        clearTimeout(silenceTimer);
-        silenceTimer = null;
-      } else if (hasSpoken && !silenceTimer) {
-        // User was speaking and now went silent
-        silenceTimer = setTimeout(() => finishRecording(), SILENCE_DURATION);
-      }
+    if (b64 && ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'audio', audio: b64 }));
+    } else {
+      go('idle');
     }
   }
 
-  // ── Circle visualizer ──────────────────────────────────────────
-  function draw() {
-    requestAnimationFrame(draw);
-    ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
-
-    breathPhase += 0.015;
-    amplitude += (targetAmplitude - amplitude) * 0.12;
-
-    const cx = W/2, cy = H * 0.42;
-    const br = Math.min(W, H) * 0.12;
-
-    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-    ctx.lineWidth = 2.5 * devicePixelRatio;
-    ctx.beginPath();
-
-    const pts = 128;
-    for (let i = 0; i <= pts; i++) {
-      const a = (i/pts) * Math.PI * 2;
-      let r = br;
-
-      if (state === 'idle') {
-        r += Math.sin(breathPhase) * br * 0.03;
-      } else if (state === 'listening' || state === 'speaking') {
-        const w = amplitude * br * 0.5;
-        r += Math.sin(a*3 + breathPhase*2) * w * 0.4;
-        r += Math.sin(a*5 - breathPhase*1.5) * w * 0.25;
-        r += Math.sin(a*7 + breathPhase*3) * w * 0.15;
-        r += w * 0.2;
-      } else if (state === 'thinking') {
-        r += Math.sin(breathPhase*3) * br * 0.08;
-        r += Math.sin(a*2 + breathPhase*0.8) * br * 0.04;
-      }
-
-      const x = cx + Math.cos(a) * r;
-      const y = cy + Math.sin(a) * r;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
-    ctx.closePath();
-    ctx.stroke();
-  }
-  requestAnimationFrame(draw);
-
-  // ── State management ────────────────────────────────────────────
-  function setState(s) {
-    state = s;
-    const labels = { idle: 'tap to talk', listening: 'listening', thinking: 'thinking', speaking: '' };
-    statusEl.textContent = labels[s] || s;
-    statusEl.style.opacity = s === 'idle' ? '0.4' : '0.6';
-    if (s === 'listening') pollMic();
-    if (s !== 'listening' && s !== 'speaking') targetAmplitude = 0;
-  }
-
-  // ── Tap interaction ─────────────────────────────────────────────
-  mainEl.addEventListener('click', async () => {
-    if (state === 'speaking' || state === 'thinking') return;
-
-    // If already listening, force-stop and send
-    if (state === 'listening') {
-      finishRecording();
-      return;
-    }
-
-    // Start recording — silence detection will auto-stop
-    hideResponseText();
-    transcriptEl.textContent = '';
-    const ok = await startRecording();
-    if (ok) {
-      setState('listening');
-    }
-  });
+  window._finish = finish;
+  return true;
 }
 
-})();
+function detectSilence() {
+  if (state !== 'listening') return;
+  requestAnimationFrame(detectSilence);
+  analyser.getByteFrequencyData(micData);
+  let sum = 0;
+  for (let i = 0; i < micData.length; i++) sum += micData[i];
+  const amp = sum / micData.length / 255;
+  if (amp > 0.04) { hasSpoken = true; clearTimeout(silenceTimer); silenceTimer = null; }
+  else if (hasSpoken && !silenceTimer) {
+    silenceTimer = setTimeout(() => window._finish && window._finish(), 1500);
+  }
+}
+
+// ── Tap handler ────────────────────────────────────────────
+orb.addEventListener('click', async () => {
+  if (state === 'thinking') return;
+  if (state === 'speaking') {
+    audioQueue = [];
+    isPlaying = false;
+    go('idle');
+    return;
+  }
+  if (state === 'listening') {
+    if (window._finish) window._finish();
+    return;
+  }
+  reply.classList.remove('show');
+  reply.textContent = '';
+  audioQueue = [];
+  isPlaying = false;
+  if (await startRec()) go('listening');
+});
+
+// Keepalive
+setInterval(() => {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'ping' }));
+}, 25000);
 </script>
 </body>
 </html>
