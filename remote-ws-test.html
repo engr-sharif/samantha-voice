@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Remote WebSocket Test</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      background: #101214;
+      color: #f5f7fb;
+    }
+    main {
+      width: min(92vw, 680px);
+      padding: 32px;
+      border: 1px solid #2d333b;
+      border-radius: 8px;
+      background: #171b20;
+      box-shadow: 0 16px 60px rgba(0,0,0,.35);
+    }
+    h1 { margin: 0 0 12px; font-size: clamp(28px, 5vw, 42px); }
+    p { line-height: 1.5; color: #c9d1d9; }
+    code { color: #8bd5ff; overflow-wrap: anywhere; }
+    button {
+      margin-top: 16px;
+      padding: 12px 16px;
+      border-radius: 6px;
+      border: 1px solid #7c8590;
+      background: #f5f7fb;
+      color: #101214;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    #status { margin-top: 18px; font-weight: 700; }
+    .pass { color: #7ee787; }
+    .fail { color: #ff7b72; }
+    .wait { color: #ffa657; }
+    pre {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      background: #0d1117;
+      border: 1px solid #2d333b;
+      border-radius: 6px;
+      padding: 12px;
+      color: #c9d1d9;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>WebSocket test</h1>
+    <p>This checks whether the browser/network allows <code>wss://</code> connections over normal HTTPS.</p>
+    <p>Endpoint: <code>wss://echo.websocket.org</code></p>
+    <button id="run">Run test</button>
+    <div id="status" class="wait">Waiting</div>
+    <pre id="log"></pre>
+  </main>
+  <script>
+    const statusEl = document.getElementById('status');
+    const logEl = document.getElementById('log');
+    const endpoint = 'wss://echo.websocket.org';
+    function log(line) { logEl.textContent += line + '\n'; }
+    function setStatus(text, cls) {
+      statusEl.textContent = text;
+      statusEl.className = cls;
+    }
+    document.getElementById('run').addEventListener('click', () => {
+      logEl.textContent = '';
+      setStatus('Connecting...', 'wait');
+      const started = performance.now();
+      let done = false;
+      const ws = new WebSocket(endpoint);
+      const timer = setTimeout(() => {
+        if (done) return;
+        done = true;
+        setStatus('FAILED: timeout', 'fail');
+        log('Timed out after 8 seconds. Network may block WebSockets.');
+        try { ws.close(); } catch {}
+      }, 8000);
+      ws.onopen = () => {
+        log('Connected. Sending test message...');
+        ws.send('nawaz-remote-test-' + Date.now());
+      };
+      ws.onmessage = event => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        const ms = Math.round(performance.now() - started);
+        setStatus('PASSED: WebSocket works', 'pass');
+        log('Echo received in ' + ms + ' ms:');
+        log(String(event.data));
+        ws.close();
+      };
+      ws.onerror = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        setStatus('FAILED: connection error', 'fail');
+        log('Browser reported a WebSocket error.');
+      };
+      ws.onclose = event => {
+        log('Closed: code=' + event.code + ' reason=' + (event.reason || '(none)'));
+      };
+    });
+  </script>
+</body>
+</html>
